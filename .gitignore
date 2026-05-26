@@ -1,0 +1,8 @@
+node_modules/
+backend/.env
+backend/centrale.db
+backend/centrale.db-shm
+backend/centrale.db-wal
+backend/uploads/
+.env
+*.env
