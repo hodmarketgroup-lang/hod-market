@@ -1,77 +1,58 @@
-const db = require('../db/database');
+const Caisse = require('../models/Caisse');
+const Parametres = require('../models/Parametres');
 
-function getSoldeActuel(callback) {
-  db.get('SELECT solde FROM caisse ORDER BY id DESC LIMIT 1', (err, row) => {
-    if (err || !row) {
-      db.get('SELECT solde_initial FROM parametres WHERE id=1', (err2, p) => {
-        callback(p ? p.solde_initial : 0);
-      });
-    } else {
-      callback(row.solde);
-    }
-  });
+async function getSoldeActuel() {
+  const last = await Caisse.findOne().sort({ _id: -1 });
+  if (last) return last.solde;
+  const params = await Parametres.findOne();
+  return params ? params.solde_initial : 0;
 }
 
-const getAll = (req, res) => {
-  db.get('SELECT * FROM parametres WHERE id=1', (err, params) => {
-    db.all('SELECT * FROM caisse ORDER BY id ASC', [], (err, journal) => {
-      if (err) return res.status(500).json({ error: err.message });
-      getSoldeActuel(solde => {
-        res.json({ journal, solde, solde_initial: params ? params.solde_initial : 0 });
-      });
-    });
-  });
+const getAll = async (req, res) => {
+  try {
+    const params = await Parametres.findOne();
+    const journal = await Caisse.find().sort({ _id: 1 });
+    const solde = await getSoldeActuel();
+    res.json({ journal, solde, solde_initial: params ? params.solde_initial : 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
-const addOperation = (req, res) => {
-  const { date, type, libelle, montant } = req.body;
-  if (!montant || isNaN(montant)) return res.status(400).json({ error: 'Montant invalide' });
-
-  getSoldeActuel(solde => {
+const addOperation = async (req, res) => {
+  try {
+    const { date, type, libelle, montant } = req.body;
+    if (!montant || isNaN(montant)) return res.status(400).json({ error: 'Montant invalide' });
+    const solde = await getSoldeActuel();
     const entree = type === 'Entree' ? Number(montant) : 0;
     const sortie = type === 'Sortie' ? Number(montant) : 0;
     const newSolde = solde + entree - sortie;
-
-    db.run(
-      'INSERT INTO caisse (date, type, libelle, entree, sortie, solde) VALUES (?,?,?,?,?,?)',
-      [date, type, libelle, entree, sortie, newSolde],
-      function(err) {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ success: true, solde: newSolde });
-      }
-    );
-  });
+    await new Caisse({ date, type, libelle, entree, sortie, solde: newSolde }).save();
+    res.json({ success: true, solde: newSolde });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
-const deleteOperation = (req, res) => {
-  const { id } = req.params;
-  db.get('SELECT * FROM caisse WHERE id = ?', [id], (err, op) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!op) return res.status(404).json({ error: 'Operation introuvable' });
-    if (op.facture_id || op.echeance_id) return res.status(400).json({ error: 'Impossible d annuler une operation automatique' });
+const deleteOperation = async (req, res) => {
+  try {
+    const op = await Caisse.findById(req.params.id);
+    if (!op) return res.status(404).json({ error: 'Opération introuvable' });
+    if (op.facture_id || op.echeance_id) return res.status(400).json({ error: 'Impossible d\'annuler une opération automatique' });
+    await Caisse.findByIdAndDelete(req.params.id);
 
-    db.run('DELETE FROM caisse WHERE id = ?', [id], (err) => {
-      if (err) return res.status(500).json({ error: err.message });
-
-      db.all('SELECT * FROM caisse ORDER BY id ASC', [], (err, journal) => {
-        if (journal.length === 0) return res.json({ success: true });
-        db.get('SELECT solde_initial FROM parametres WHERE id=1', (err, p) => {
-          let solde = p ? p.solde_initial : 0;
-          const updates = journal.map(j => {
-            solde = solde + (j.entree || 0) - (j.sortie || 0);
-            return { id: j.id, solde };
-          });
-          let done = 0;
-          updates.forEach(u => {
-            db.run('UPDATE caisse SET solde = ? WHERE id = ?', [u.solde, u.id], () => {
-              done++;
-              if (done === updates.length) res.json({ success: true });
-            });
-          });
-        });
-      });
-    });
-  });
+    // Recalculer les soldes
+    const params = await Parametres.findOne();
+    const journal = await Caisse.find().sort({ _id: 1 });
+    let solde = params ? params.solde_initial : 0;
+    for (const j of journal) {
+      solde = solde + (j.entree || 0) - (j.sortie || 0);
+      await Caisse.findByIdAndUpdate(j._id, { solde });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
-module.exports = { getAll, addOperation, deleteOperation };
+module.exports = { getAll, addOperation, deleteOperation, getSoldeActuel };

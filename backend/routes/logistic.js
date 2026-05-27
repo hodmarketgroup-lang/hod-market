@@ -1,104 +1,79 @@
 const router = require('express').Router();
-const db = require('../db/database');
+const { LogisticRecette, LogisticCharge, LogisticCaisse } = require('../models/Autres');
 
-function getSolde(callback) {
-  db.get('SELECT solde FROM logistic_caisse ORDER BY id DESC LIMIT 1', (err, row) => {
-    callback(row ? row.solde : 0);
-  });
+async function getSolde() {
+  const last = await LogisticCaisse.findOne().sort({ _id: -1 });
+  return last ? last.solde : 0;
 }
 
-function fmt(m) {
-  return Math.round(m || 0);
-}
-
-// RECETTES
-router.get('/recettes', (req, res) => {
-  db.all('SELECT * FROM logistic_recettes ORDER BY date DESC', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+router.get('/recettes', async (req, res) => {
+  try {
+    const rows = await LogisticRecette.find().sort({ date: -1 });
     res.json(rows);
-  });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/recettes', (req, res) => {
-  const { date, id_camion, type_service, montant, description } = req.body;
-  db.run(
-    'INSERT INTO logistic_recettes (date, id_camion, type_service, montant, description) VALUES (?,?,?,?,?)',
-    [date, id_camion, type_service, montant, description || ''],
-    function(err) {
-      if (err) return res.status(500).json({ error: err.message });
-      getSolde(solde => {
-        const newSolde = solde + Number(montant);
-        db.run(
-          'INSERT INTO logistic_caisse (date, type, libelle, entree, solde) VALUES (?,?,?,?,?)',
-          [date, 'Entree', 'Recette - ' + type_service + ' (' + id_camion + ')', montant, newSolde]
-        );
-      });
-      res.json({ id: this.lastID });
-    }
-  );
+router.post('/recettes', async (req, res) => {
+  try {
+    const { date, id_camion, type_service, montant, description } = req.body;
+    const rec = await new LogisticRecette({ date, id_camion, type_service, montant, description }).save();
+    const solde = await getSolde();
+    const newSolde = solde + Number(montant);
+    await new LogisticCaisse({ date, type: 'Entree', libelle: `Recette - ${type_service} (${id_camion})`, entree: montant, solde: newSolde }).save();
+    res.json({ id: rec._id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.delete('/recettes/:id', (req, res) => {
-  db.run('DELETE FROM logistic_recettes WHERE id = ?', [req.params.id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+router.delete('/recettes/:id', async (req, res) => {
+  try {
+    await LogisticRecette.findByIdAndDelete(req.params.id);
     res.json({ success: true });
-  });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// CHARGES
-router.get('/charges', (req, res) => {
-  db.all('SELECT * FROM logistic_charges ORDER BY date DESC', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+router.get('/charges', async (req, res) => {
+  try {
+    const rows = await LogisticCharge.find().sort({ date: -1 });
     res.json(rows);
-  });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/charges', (req, res) => {
-  const { date, type_depense, montant, description } = req.body;
-  db.run(
-    'INSERT INTO logistic_charges (date, type_depense, montant, description) VALUES (?,?,?,?)',
-    [date, type_depense, montant, description || ''],
-    function(err) {
-      if (err) return res.status(500).json({ error: err.message });
-      getSolde(solde => {
-        const newSolde = solde - Number(montant);
-        db.run(
-          'INSERT INTO logistic_caisse (date, type, libelle, sortie, solde) VALUES (?,?,?,?,?)',
-          [date, 'Sortie', 'Charge - ' + type_depense, montant, newSolde]
-        );
-      });
-      res.json({ id: this.lastID });
-    }
-  );
+router.post('/charges', async (req, res) => {
+  try {
+    const { date, type_depense, montant, description } = req.body;
+    const charge = await new LogisticCharge({ date, type_depense, montant, description }).save();
+    const solde = await getSolde();
+    const newSolde = solde - Number(montant);
+    await new LogisticCaisse({ date, type: 'Sortie', libelle: `Charge - ${type_depense}`, sortie: montant, solde: newSolde }).save();
+    res.json({ id: charge._id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.delete('/charges/:id', (req, res) => {
-  db.run('DELETE FROM logistic_charges WHERE id = ?', [req.params.id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+router.delete('/charges/:id', async (req, res) => {
+  try {
+    await LogisticCharge.findByIdAndDelete(req.params.id);
     res.json({ success: true });
-  });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// CAISSE
-router.get('/caisse', (req, res) => {
-  db.all('SELECT * FROM logistic_caisse ORDER BY id ASC', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    getSolde(solde => res.json({ journal: rows, solde }));
-  });
+router.get('/caisse', async (req, res) => {
+  try {
+    const journal = await LogisticCaisse.find().sort({ _id: 1 });
+    const solde = await getSolde();
+    res.json({ journal, solde });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// DASHBOARD
-router.get('/dashboard', (req, res) => {
-  db.all('SELECT * FROM logistic_recettes', [], (err, recettes) => {
-    db.all('SELECT * FROM logistic_charges', [], (err, charges) => {
-      const totalRecettes = recettes.reduce((s, r) => s + (r.montant || 0), 0);
-      const totalCharges = charges.reduce((s, c) => s + (c.montant || 0), 0);
-      const marge = totalRecettes - totalCharges;
-      getSolde(solde => {
-        res.json({ totalRecettes, totalCharges, marge, solde, recettes, charges });
-      });
-    });
-  });
+router.get('/dashboard', async (req, res) => {
+  try {
+    const recettes = await LogisticRecette.find();
+    const charges = await LogisticCharge.find();
+    const totalRecettes = recettes.reduce((s, r) => s + (r.montant || 0), 0);
+    const totalCharges = charges.reduce((s, c) => s + (c.montant || 0), 0);
+    const marge = totalRecettes - totalCharges;
+    const solde = await getSolde();
+    res.json({ totalRecettes, totalCharges, marge, solde, recettes, charges });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 module.exports = router;

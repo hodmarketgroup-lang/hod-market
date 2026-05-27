@@ -4,6 +4,27 @@ const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 const API = axios.create({ baseURL: `${BASE_URL}/api` });
 
+// Ajouter le token automatiquement
+API.interceptors.request.use((config) => {
+  const token = localStorage.getItem('hod_token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+// Déconnexion automatique si token expiré
+API.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('hod_token');
+      localStorage.removeItem('hod_role');
+      localStorage.removeItem('hod_username');
+      window.location.reload();
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const getClients = () => API.get('/clients');
 export const createClient = (d) => API.post('/clients', d);
 export const updateClient = (id, d) => API.put(`/clients/${id}`, d);
@@ -13,9 +34,11 @@ export const getSituationClient = (id) => API.get(`/clients/${id}/situation`);
 export const getFactures = () => API.get('/factures');
 export const getFacture = (id) => API.get(`/factures/${id}`);
 export const createFacture = (d) => API.post('/factures', d);
+export const updateFacture = (id, d) => API.put(`/factures/${id}`, d);
 export const marquerPaye = (echId) => API.put(`/factures/echeances/${echId}/payer`);
 export const annulerPaiement = (echId) => API.put(`/factures/echeances/${echId}/annuler`);
 export const appliquerPenalite = (id) => API.post(`/factures/${id}/penalite`);
+export const paiementPartiel = (echId, d) => API.put(`/factures/echeances/${echId}/partiel`, d);
 
 export const getCaisse = () => API.get('/caisse');
 export const addOperation = (d) => API.post('/caisse', d);
@@ -54,5 +77,3 @@ export const getConstructionStock = () => API.get('/construction/stock');
 export const ajusterConstructionStock = (d) => API.post('/construction/stock/ajuster', d);
 export const getConstructionCaisse = () => API.get('/construction/caisse');
 export const getConstructionDashboard = () => API.get('/construction/dashboard');
-export const updateFacture = (id, d) => API.put(`/factures/${id}`, d);
-export const paiementPartiel = (echId, d) => API.put(`/factures/echeances/${echId}/partiel`, d);
