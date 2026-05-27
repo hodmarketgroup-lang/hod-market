@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API = axios.create({ baseURL: 'http://localhost:5000/api' });
+const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
+const API = axios.create({ baseURL: `${BASE_URL}/api` });
 
 export const getClients = () => API.get('/clients');
 export const createClient = (d) => API.post('/clients', d);
@@ -24,7 +26,7 @@ export const saveParams = (d) => API.put('/parametres', d);
 export const getDocuments = (clientId) => API.get(`/documents/${clientId}/documents`);
 export const uploadDocument = (clientId, formData) => API.post(`/documents/${clientId}/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 export const supprimerDocument = (clientId, fichier) => API.delete(`/documents/${clientId}/documents/${fichier}`);
-export const getUrlDocument = (clientId, fichier) => `http://localhost:5000/api/documents/${clientId}/documents/${fichier}`;
+export const getUrlDocument = (clientId, fichier) => `${BASE_URL}/api/documents/${clientId}/documents/${fichier}`;
 
 // HOD LOGISTIC
 export const getLogisticRecettes = () => API.get('/logistic/recettes');

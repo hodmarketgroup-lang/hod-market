@@ -10,7 +10,13 @@ const { verifierRappels } = require('./services/rappels');
 const app = express();
 initDB();
 
-app.use(cors({ origin: 'http://localhost:3000' }));
+app.use(cors({
+  origin: [
+    'https://hod-marketgroup.netlify.app',
+    'http://localhost:3000'
+  ],
+  credentials: true
+}));
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(morgan('dev'));
 app.use(express.json());
@@ -27,9 +33,9 @@ app.use('/api/construction', require('./routes/construction'));
 
 app.use(errorHandler);
 
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log('Serveur HOD-MARKET demarre sur http://localhost:' + PORT);
+  console.log('Serveur HOD-MARKET demarre sur le port ' + PORT);
   verifierRappels();
   const maintenant = new Date();
   const heure8h = new Date();
