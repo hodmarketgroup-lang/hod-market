@@ -1,5 +1,4 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
 
 async function initDB() {
   try {
@@ -25,8 +24,10 @@ async function initDB() {
     const User = require('../models/User');
     const countUsers = await User.countDocuments();
     if (countUsers === 0) {
-      await new User({ username: 'admin', password: 'admin123', role: 'admin' }).save();
-      await new User({ username: 'employe', password: 'employe123', role: 'employe' }).save();
+      const admin = new User({ username: 'admin', password: 'admin123', role: 'admin' });
+      await admin.save();
+      const employe = new User({ username: 'employe', password: 'employe123', role: 'employe' });
+      await employe.save();
       console.log('✅ Comptes créés - admin/admin123 et employe/employe123');
     }
 
