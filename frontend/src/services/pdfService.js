@@ -3,7 +3,8 @@ import autoTable from 'jspdf-autotable';
 
 const COLORS = {
   primary: [13, 27, 42],
-  accent: [41, 121, 255],
+  accent: [46, 204, 113],      // vert clair HOD GROUPE
+  accentDark: [26, 92, 58],    // vert foncé HOD GROUPE
   success: [0, 180, 90],
   warning: [220, 120, 0],
   white: [255, 255, 255],
@@ -19,19 +20,71 @@ function formatMontant(montant) {
   return Math.round(montant || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
+function drawLogo(doc, x, y, size) {
+  size = size || 14;
+  var cx = x + size / 2;
+  var cy = y + size / 2;
+  var r = size / 2;
+
+  // Cercle extérieur vert foncé
+  doc.setFillColor(...COLORS.accentDark);
+  doc.circle(cx, cy, r, 'F');
+
+  // Cercle intérieur fond sombre
+  doc.setFillColor(...COLORS.primary);
+  doc.circle(cx, cy, r * 0.8, 'F');
+
+  // Rayons et nœuds
+  doc.setDrawColor(...COLORS.accent);
+  doc.setLineWidth(0.3);
+  var angles = [0, 45, 90, 135, 180, 225, 270, 315];
+  angles.forEach(function(angle) {
+    var rad = (angle * Math.PI) / 180;
+    var x1 = cx + Math.cos(rad) * r * 0.8;
+    var y1 = cy + Math.sin(rad) * r * 0.8;
+    var x2 = cx + Math.cos(rad) * r * 1.15;
+    var y2 = cy + Math.sin(rad) * r * 1.15;
+    doc.line(x1, y1, x2, y2);
+    doc.setFillColor(...COLORS.accent);
+    doc.circle(x2, y2, 0.6, 'F');
+  });
+
+  // Texte HOD au centre
+  doc.setTextColor(...COLORS.accent);
+  doc.setFontSize(size * 0.4);
+  doc.setFont('helvetica', 'bold');
+  doc.text('HOD', cx, cy + size * 0.13, { align: 'center' });
+}
+
 function entete(doc, titre, numero, couleurTitre) {
   couleurTitre = couleurTitre || COLORS.white;
+
+  // Fond header
   doc.setFillColor(...COLORS.primary);
-  doc.rect(0, 0, 210, 40, 'F');
+  doc.rect(0, 0, 210, 44, 'F');
+
+  // Logo
+  drawLogo(doc, 12, 6, 16);
+
+  // Texte HOD GROUPE
   doc.setTextColor(...COLORS.accent);
-  doc.setFontSize(22);
+  doc.setFontSize(20);
   doc.setFont('helvetica', 'bold');
-  doc.text('HOD GROUPE', 14, 18);
+  doc.text('HOD GROUPE', 32, 16);
+
+  // Sous-titre
   doc.setTextColor(...COLORS.gray);
-  doc.setFontSize(9);
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
-  doc.text('HOD MARKET - Centrale d achat', 14, 26);
-  doc.text('Pointe-Noire, Republique du Congo', 14, 32);
+  doc.text('HOD MARKET - Centrale d achat', 32, 23);
+  doc.text('Pointe-Noire, Republique du Congo', 32, 29);
+
+  // Ligne décorative verte sous le texte
+  doc.setDrawColor(...COLORS.accent);
+  doc.setLineWidth(0.8);
+  doc.line(32, 33, 100, 33);
+
+  // Titre document (droite)
   doc.setTextColor(...couleurTitre);
   doc.setFontSize(18);
   doc.setFont('helvetica', 'bold');
@@ -40,20 +93,30 @@ function entete(doc, titre, numero, couleurTitre) {
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   doc.text(numero, 196, 27, { align: 'right' });
+
+  // Ligne séparatrice
   doc.setDrawColor(...COLORS.accent);
   doc.setLineWidth(0.5);
-  doc.line(0, 40, 210, 40);
+  doc.line(0, 44, 210, 44);
 }
 
 function pied(doc) {
   var pageH = doc.internal.pageSize.height;
   doc.setFillColor(...COLORS.primary);
-  doc.rect(0, pageH - 18, 210, 18, 'F');
-  doc.setTextColor(...COLORS.gray);
+  doc.rect(0, pageH - 20, 210, 20, 'F');
+
+  // Mini logo dans le pied
+  drawLogo(doc, 8, pageH - 17, 12);
+
+  doc.setTextColor(...COLORS.accent);
   doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
+  doc.text('HOD GROUPE', 24, pageH - 12);
+  doc.setTextColor(...COLORS.gray);
   doc.setFont('helvetica', 'normal');
-  doc.text('HOD GROUPE - HOD MARKET - Centrale d achat - Pointe-Noire, Republique du Congo', 105, pageH - 10, { align: 'center' });
-  doc.text('Document genere le ' + new Date().toLocaleDateString('fr-FR'), 105, pageH - 5, { align: 'center' });
+  doc.setFontSize(7);
+  doc.text('HOD MARKET - Centrale d achat - Pointe-Noire, Republique du Congo', 24, pageH - 7);
+  doc.text('Document genere le ' + new Date().toLocaleDateString('fr-FR'), 196, pageH - 7, { align: 'right' });
 }
 
 function infoBox(doc, label, value, x, y, w) {
@@ -83,7 +146,7 @@ function tableauEcheances(doc, echeances, startY, acompte, dateFacture) {
     startY: startY,
     head: [['Echeance', 'Date', 'Montant', 'Statut']],
     body: rows,
-    headStyles: { fillColor: COLORS.headerGray, textColor: COLORS.black, fontStyle: 'bold', fontSize: 10 },
+    headStyles: { fillColor: COLORS.accentDark, textColor: COLORS.white, fontStyle: 'bold', fontSize: 10 },
     bodyStyles: { fontSize: 9, textColor: COLORS.black },
     alternateRowStyles: { fillColor: COLORS.rowAlt },
     columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 45 }, 2: { cellWidth: 60 }, 3: { cellWidth: 40 } },
@@ -166,48 +229,48 @@ export function imprimerProforma(form, calcul, clientNom, params) {
   entete(doc, 'PROFORMA', refProforma, COLORS.orange);
 
   doc.setFillColor(255, 243, 224);
-  doc.roundedRect(14, 43, 182, 10, 2, 2, 'F');
+  doc.roundedRect(14, 47, 182, 10, 2, 2, 'F');
   doc.setTextColor(...COLORS.orange);
   doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
-  doc.text('DOCUMENT NON CONTRACTUEL - PROFORMA SOUMIS A ACCEPTATION DU CLIENT', 105, 50, { align: 'center' });
+  doc.text('DOCUMENT NON CONTRACTUEL - PROFORMA SOUMIS A ACCEPTATION DU CLIENT', 105, 54, { align: 'center' });
 
   doc.setFillColor(...COLORS.lightGray);
-  doc.roundedRect(14, 56, 182, 28, 3, 3, 'F');
+  doc.roundedRect(14, 60, 182, 28, 3, 3, 'F');
   doc.setTextColor(...COLORS.gray);
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
-  doc.text('CLIENT', 20, 64);
+  doc.text('CLIENT', 20, 68);
   doc.setTextColor(...COLORS.black);
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
-  doc.text(clientNom || '-', 20, 72);
+  doc.text(clientNom || '-', 20, 76);
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...COLORS.gray);
-  doc.text('DATE PROFORMA', 130, 64);
+  doc.text('DATE PROFORMA', 130, 68);
   doc.setTextColor(...COLORS.black);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.text(today, 130, 72);
+  doc.text(today, 130, 76);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...COLORS.gray);
   doc.setFontSize(8);
-  doc.text('DESIGNATION', 130, 79);
+  doc.text('DESIGNATION', 130, 83);
   doc.setTextColor(...COLORS.black);
   doc.setFontSize(9);
-  doc.text(form.designation || '-', 130, 85);
+  doc.text(form.designation || '-', 130, 89);
 
-  infoBox(doc, 'Montant commande', formatMontant(form.montant_commande) + ' FCFA', 14, 93);
-  infoBox(doc, 'Marge (' + calcul.taux + '%)', formatMontant(calcul.marge_brute) + ' FCFA', 111, 93);
-  infoBox(doc, 'Frais de dossier (1%)', formatMontant(calcul.frais) + ' FCFA', 14, 116);
+  infoBox(doc, 'Montant commande', formatMontant(form.montant_commande) + ' FCFA', 14, 97);
+  infoBox(doc, 'Marge (' + calcul.taux + '%)', formatMontant(calcul.marge_brute) + ' FCFA', 111, 97);
+  infoBox(doc, 'Frais de dossier (1%)', formatMontant(calcul.frais) + ' FCFA', 14, 120);
 
   if (Number(form.remise) > 0) {
-    infoBox(doc, 'Remise sur marge', '- ' + formatMontant(form.remise) + ' FCFA', 111, 116);
+    infoBox(doc, 'Remise sur marge', '- ' + formatMontant(form.remise) + ' FCFA', 111, 120);
   }
 
   var totalBrut = Number(form.montant_commande) + calcul.marge_brute + calcul.frais - Number(form.remise || 0);
-  var totalY = 139;
+  var totalY = 143;
 
   doc.setFillColor(...COLORS.orange);
   doc.roundedRect(14, totalY, 182, 20, 3, 3, 'F');
@@ -253,7 +316,7 @@ export function imprimerProforma(form, calcul, clientNom, params) {
     body: echeancesProforma.map(function(e) {
       return [e.numero_ech, e.date_echeance, formatMontant(e.montant) + ' FCFA', e.statut];
     }),
-    headStyles: { fillColor: COLORS.headerGray, textColor: COLORS.black, fontStyle: 'bold', fontSize: 10 },
+    headStyles: { fillColor: COLORS.accentDark, textColor: COLORS.white, fontStyle: 'bold', fontSize: 10 },
     bodyStyles: { fontSize: 9, textColor: COLORS.black },
     alternateRowStyles: { fillColor: COLORS.rowAlt },
     columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 55 }, 2: { cellWidth: 55 }, 3: { cellWidth: 45 } },
@@ -287,65 +350,66 @@ export function imprimerFacture(facture) {
   entete(doc, 'FACTURE', facture.numero);
 
   doc.setFillColor(...COLORS.lightGray);
-  doc.roundedRect(14, 48, 182, 28, 3, 3, 'F');
+  doc.roundedRect(14, 52, 182, 28, 3, 3, 'F');
   doc.setTextColor(...COLORS.gray);
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
-  doc.text('CLIENT', 20, 56);
+  doc.text('CLIENT', 20, 60);
   doc.setTextColor(...COLORS.black);
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
-  doc.text(facture.client_nom || '-', 20, 64);
+  doc.text(facture.client_nom || '-', 20, 68);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...COLORS.gray);
-  doc.text(facture.telephone || '', 20, 71);
+  doc.text(facture.telephone || '', 20, 75);
   doc.setFontSize(8);
-  doc.text('DATE FACTURE', 130, 56);
+  doc.text('DATE FACTURE', 130, 60);
   doc.setTextColor(...COLORS.black);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.text(facture.date_facture || '-', 130, 64);
+  doc.text(facture.date_facture || '-', 130, 68);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...COLORS.gray);
   doc.setFontSize(8);
-  doc.text('DESIGNATION', 130, 71);
+  doc.text('DESIGNATION', 130, 75);
   doc.setTextColor(...COLORS.black);
   doc.setFontSize(9);
-  doc.text(facture.designation || '-', 130, 77);
+  doc.text(facture.designation || '-', 130, 81);
 
-  infoBox(doc, 'Montant commande', formatMontant(facture.montant_commande) + ' FCFA', 14, 85);
-  infoBox(doc, 'Marge (' + (facture.taux || 0) + '%)', formatMontant(facture.marge) + ' FCFA', 111, 85);
-  infoBox(doc, 'Frais de dossier (' + (facture.frais_dossier_pct || 1) + '%)', formatMontant(facture.frais_dossier) + ' FCFA', 14, 108);
+  infoBox(doc, 'Montant commande', formatMontant(facture.montant_commande) + ' FCFA', 14, 89);
+  infoBox(doc, 'Marge (' + (facture.taux || 0) + '%)', formatMontant(facture.marge) + ' FCFA', 111, 89);
+  infoBox(doc, 'Frais de dossier (' + (facture.frais_dossier_pct || 1) + '%)', formatMontant(facture.frais_dossier) + ' FCFA', 14, 112);
 
   if (Number(facture.remise) > 0) {
-    infoBox(doc, 'Remise sur marge', '- ' + formatMontant(facture.remise) + ' FCFA', 111, 108);
+    infoBox(doc, 'Remise sur marge', '- ' + formatMontant(facture.remise) + ' FCFA', 111, 112);
   } else if (Number(facture.acompte) > 0) {
-    infoBox(doc, 'Acompte verse', formatMontant(facture.acompte) + ' FCFA', 111, 108);
+    infoBox(doc, 'Acompte verse', formatMontant(facture.acompte) + ' FCFA', 111, 112);
   }
 
-  doc.setFillColor(...COLORS.primary);
-  doc.roundedRect(14, 131, 182, 20, 3, 3, 'F');
+  // Total avec couleur verte HOD
+  doc.setFillColor(...COLORS.accentDark);
+  doc.roundedRect(14, 135, 182, 20, 3, 3, 'F');
   doc.setTextColor(...COLORS.white);
   doc.setFontSize(11);
   doc.setFont('helvetica', 'normal');
-  doc.text('TOTAL GENERAL', 20, 144);
+  doc.text('TOTAL GENERAL', 20, 148);
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text(formatMontant(totalBrut) + ' FCFA', 196, 144, { align: 'right' });
+  doc.text(formatMontant(totalBrut) + ' FCFA', 196, 148, { align: 'right' });
 
   if (Number(facture.acompte) > 0) {
     doc.setFillColor(...COLORS.lightGray);
-    doc.roundedRect(14, 155, 182, 12, 2, 2, 'F');
+    doc.roundedRect(14, 159, 182, 12, 2, 2, 'F');
     doc.setTextColor(...COLORS.black);
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    doc.text('Acompte verse : ' + formatMontant(facture.acompte) + ' FCFA', 20, 163);
+    doc.text('Acompte verse : ' + formatMontant(facture.acompte) + ' FCFA', 20, 167);
     doc.setFont('helvetica', 'bold');
-    doc.text('Reste a payer : ' + formatMontant(totalBrut - Number(facture.acompte)) + ' FCFA', 130, 163);
+    doc.text('Reste a payer : ' + formatMontant(totalBrut - Number(facture.acompte)) + ' FCFA', 130, 167);
   }
 
-  var statutY = Number(facture.acompte) > 0 ? 175 : 160;
+  var statutY = Number(facture.acompte) > 0 ? 179 : 164;
   doc.setTextColor(...COLORS.warning);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
@@ -369,45 +433,46 @@ export function imprimerRecu(facture, echeance) {
   entete(doc, 'RECU DE PAIEMENT', 'Ref: ' + facture.numero);
 
   doc.setFillColor(...COLORS.lightGray);
-  doc.roundedRect(14, 48, 182, 28, 3, 3, 'F');
+  doc.roundedRect(14, 52, 182, 28, 3, 3, 'F');
   doc.setTextColor(...COLORS.gray);
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
-  doc.text('CLIENT', 20, 56);
+  doc.text('CLIENT', 20, 60);
   doc.setTextColor(...COLORS.black);
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
-  doc.text(facture.client_nom || '-', 20, 64);
+  doc.text(facture.client_nom || '-', 20, 68);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...COLORS.gray);
-  doc.text(facture.telephone || '', 20, 71);
+  doc.text(facture.telephone || '', 20, 75);
   doc.setFontSize(8);
-  doc.text('DATE PAIEMENT', 130, 56);
+  doc.text('DATE PAIEMENT', 130, 60);
   doc.setTextColor(...COLORS.black);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.text(echeance.date_paiement || new Date().toISOString().split('T')[0], 130, 64);
+  doc.text(echeance.date_paiement || new Date().toISOString().split('T')[0], 130, 68);
 
-  infoBox(doc, 'Echeance', echeance.numero_ech, 14, 85);
-  infoBox(doc, 'Designation', facture.designation, 111, 85);
-  infoBox(doc, 'Duree totale', (facture.duree || '') + ' mois', 14, 108);
-  infoBox(doc, 'Statut facture', facture.statut, 111, 108);
+  infoBox(doc, 'Echeance', echeance.numero_ech, 14, 89);
+  infoBox(doc, 'Designation', facture.designation, 111, 89);
+  infoBox(doc, 'Duree totale', (facture.duree || '') + ' mois', 14, 112);
+  infoBox(doc, 'Statut facture', facture.statut, 111, 112);
 
-  doc.setFillColor(0, 150, 80);
-  doc.roundedRect(14, 131, 182, 20, 3, 3, 'F');
+  // Montant reçu en vert HOD
+  doc.setFillColor(...COLORS.accentDark);
+  doc.roundedRect(14, 135, 182, 20, 3, 3, 'F');
   doc.setTextColor(...COLORS.white);
   doc.setFontSize(11);
   doc.setFont('helvetica', 'normal');
-  doc.text('MONTANT RECU', 20, 144);
+  doc.text('MONTANT RECU', 20, 148);
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text(formatMontant(echeance.montant) + ' FCFA', 196, 144, { align: 'right' });
+  doc.text(formatMontant(echeance.montant) + ' FCFA', 196, 148, { align: 'right' });
 
   doc.setTextColor(...COLORS.black);
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
-  doc.text('RECAPITULATIF FACTURE', 14, 165);
+  doc.text('RECAPITULATIF FACTURE', 14, 169);
 
   var bodyRecu = [
     ['Montant commande', formatMontant(facture.montant_commande) + ' FCFA'],
@@ -418,14 +483,13 @@ export function imprimerRecu(facture, echeance) {
   if (Number(facture.remise) > 0) {
     bodyRecu.push(['Remise sur marge', '- ' + formatMontant(facture.remise) + ' FCFA']);
   }
-
   bodyRecu.push(['Total facture', formatMontant(totalBrut) + ' FCFA']);
 
   autoTable(doc, {
-    startY: 169,
+    startY: 173,
     head: [['Designation', 'Montant']],
     body: bodyRecu,
-    headStyles: { fillColor: COLORS.headerGray, textColor: COLORS.black, fontStyle: 'bold', fontSize: 10 },
+    headStyles: { fillColor: COLORS.accentDark, textColor: COLORS.white, fontStyle: 'bold', fontSize: 10 },
     bodyStyles: { fontSize: 9, textColor: COLORS.black },
     alternateRowStyles: { fillColor: COLORS.rowAlt },
     margin: { left: 14, right: 14 },
