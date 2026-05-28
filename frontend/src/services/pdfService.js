@@ -423,7 +423,7 @@ export function imprimerFacture(facture) {
   tableauEcheances(doc, facture.echeances, statutY + 14, facture.acompte, facture.date_facture);
   mentionsLegales(doc, facture);
   pied(doc);
-  doc.save('Facture_' + (facture.numero ? facture.numero.replace(/\//g, '-') : '') + '.pdf');
+  doc.save('Facture_' + (facture.client_nom || '').replace(/\s/g, '_') + '_' + (facture.numero ? facture.numero.replace(/\//g, '-') : '') + '.pdf');
 }
 
 export function imprimerRecu(facture, echeance) {
@@ -518,5 +518,5 @@ export function imprimerRecu(facture, echeance) {
 
   tableauEcheances(doc, facture.echeances, finalY + 4, facture.acompte, facture.date_facture);
   pied(doc);
-  doc.save('Recu_' + (facture.numero ? facture.numero.replace(/\//g, '-') : '') + '_' + (echeance.numero_ech || '') + '.pdf');
+  doc.save('Recu_' + (facture.client_nom || '').replace(/\s/g, '_') + '_' + (facture.numero ? facture.numero.replace(/\//g, '-') : '') + '_' + (echeance.numero_ech || '') + '.pdf');
 }

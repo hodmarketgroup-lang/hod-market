@@ -78,16 +78,26 @@ const create = async (req, res) => {
       total, echeances
     }).save();
 
+    const client = await Client.findById(client_id);
+    const nomClient = client?.nom || '';
+
     const solde = await getSoldeActuel();
     if (params.deduire_commande) {
       const newSolde = solde - Number(montant_commande);
-      await new Caisse({ date: date_facture, type: 'Sortie', libelle: 'Commande (' + numero + ')', sortie: montant_commande, solde: newSolde, facture_id: facture._id }).save();
+      await new Caisse({
+        date: date_facture, type: 'Sortie',
+        libelle: `Commande - ${nomClient} (${numero})`,
+        sortie: montant_commande, solde: newSolde, facture_id: facture._id
+      }).save();
       if (Number(acompte) > 0) {
-        await new Caisse({ date: date_facture, type: 'Entree', libelle: 'Acompte (' + numero + ')', entree: acompte, solde: newSolde + Number(acompte), facture_id: facture._id }).save();
+        await new Caisse({
+          date: date_facture, type: 'Entree',
+          libelle: `Acompte - ${nomClient} (${numero})`,
+          entree: acompte, solde: newSolde + Number(acompte), facture_id: facture._id
+        }).save();
       }
     }
 
-    const client = await Client.findById(client_id);
     if (client?.telephone) {
       notifFactureCreee(client.nom, client.telephone, numero, formatMontant(total), formatMontant(Math.round(total / Number(duree))), duree);
     }
@@ -115,21 +125,15 @@ const update = async (req, res) => {
     const facture = await Facture.findById(req.params.id);
     if (!facture) return res.status(404).json({ error: 'Facture introuvable' });
 
-    // Séparer les écheances payées et en attente
     const echeancesPayees = facture.echeances.filter(e =>
       e.statut === 'Payé' || e.statut === 'Paye' || e.statut === 'Reste a regler'
     );
-    const echeancesEnAttente = facture.echeances.filter(e =>
-      e.statut === 'En attente'
-    );
+    const echeancesEnAttente = facture.echeances.filter(e => e.statut === 'En attente');
 
     let echeancesFinales;
-
-    // Si toutes les échéances sont payées → garder uniquement les payées, ne pas ajouter de nouvelles
     if (echeancesEnAttente.length === 0 && echeancesPayees.length > 0) {
       echeancesFinales = echeancesPayees;
     } else {
-      // Sinon garder les payées + nouvelles échéances en attente
       echeancesFinales = [...echeancesPayees, ...nouvellesEcheances];
     }
 
@@ -137,11 +141,9 @@ const update = async (req, res) => {
       client_id, designation, date_facture, montant_commande, duree,
       taux, marge, frais_dossier, frais_dossier_pct: fraisPct,
       acompte: acompte || 0, depot_garantie: depot_garantie || 0,
-      remise: remise || 0, total,
-      echeances: echeancesFinales
+      remise: remise || 0, total, echeances: echeancesFinales
     });
 
-    // Recalculer le statut
     const nbPayees = echeancesFinales.filter(e => e.statut === 'Payé' || e.statut === 'Paye').length;
     const nbEnAttente = echeancesFinales.filter(e => e.statut === 'En attente').length;
     const nbTotal = echeancesFinales.length;
@@ -155,7 +157,6 @@ const update = async (req, res) => {
     }
 
     await facture.save();
-
     res.json({ success: true, total, marge, taux, echeances: echeancesFinales });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -169,6 +170,8 @@ const marquerPaye = async (req, res) => {
 
     const ech = facture.echeances.id(req.params.echId);
     const today = new Date().toISOString().split('T')[0];
+    const nomClient = facture.client_id?.nom || '';
+
     ech.statut = 'Payé';
     ech.date_paiement = today;
 
@@ -180,7 +183,12 @@ const marquerPaye = async (req, res) => {
 
     const solde = await getSoldeActuel();
     const newSolde = solde + ech.montant;
-    await new Caisse({ date: today, type: 'Entree', libelle: `Paiement ${ech.numero_ech} (${facture.numero})`, entree: ech.montant, solde: newSolde, facture_id: facture._id, echeance_id: ech._id }).save();
+    await new Caisse({
+      date: today, type: 'Entree',
+      libelle: `Paiement ${ech.numero_ech} - ${nomClient} (${facture.numero})`,
+      entree: ech.montant, solde: newSolde,
+      facture_id: facture._id, echeance_id: ech._id
+    }).save();
 
     if (facture.client_id?.telephone) {
       notifPaiementRecu(facture.client_id.nom, facture.client_id.telephone, facture.numero, ech.numero_ech, formatMontant(ech.montant), today);
@@ -197,12 +205,13 @@ const paiementPartiel = async (req, res) => {
     const { montant_paye } = req.body;
     if (!montant_paye || Number(montant_paye) <= 0) return res.status(400).json({ error: 'Montant invalide' });
 
-    const facture = await Facture.findOne({ 'echeances._id': req.params.echId });
+    const facture = await Facture.findOne({ 'echeances._id': req.params.echId }).populate('client_id', 'nom');
     if (!facture) return res.status(404).json({ error: 'Echeance introuvable' });
 
     const ech = facture.echeances.id(req.params.echId);
     const montantPaye = Number(montant_paye);
     const resteAPayer = ech.montant - montantPaye;
+    const nomClient = facture.client_id?.nom || '';
 
     if (montantPaye >= ech.montant) return res.status(400).json({ error: 'Le montant partiel doit être inférieur au montant total' });
 
@@ -212,13 +221,25 @@ const paiementPartiel = async (req, res) => {
     ech.montant = montantPaye;
     ech.est_partiel = 1;
 
-    facture.echeances.push({ numero_ech: ech.numero_ech + 'A', date_echeance: ech.date_echeance, montant: resteAPayer, statut: 'Reste a regler', est_partiel: 1, echeance_parent_id: ech._id });
+    facture.echeances.push({
+      numero_ech: ech.numero_ech + 'A',
+      date_echeance: ech.date_echeance,
+      montant: resteAPayer,
+      statut: 'Reste a regler',
+      est_partiel: 1,
+      echeance_parent_id: ech._id
+    });
     facture.statut = 'Partiel';
     await facture.save();
 
     const solde = await getSoldeActuel();
     const newSolde = solde + montantPaye;
-    await new Caisse({ date: today, type: 'Entree', libelle: `Paiement partiel ${ech.numero_ech} (${facture.numero})`, entree: montantPaye, solde: newSolde, facture_id: facture._id, echeance_id: ech._id }).save();
+    await new Caisse({
+      date: today, type: 'Entree',
+      libelle: `Paiement partiel ${ech.numero_ech} - ${nomClient} (${facture.numero})`,
+      entree: montantPaye, solde: newSolde,
+      facture_id: facture._id, echeance_id: ech._id
+    }).save();
 
     res.json({ success: true, montant_paye: montantPaye, reste: resteAPayer, numero_reste: ech.numero_ech + 'A' });
   } catch (err) {
