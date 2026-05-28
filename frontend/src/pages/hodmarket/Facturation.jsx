@@ -5,22 +5,18 @@ import BadgeStatut from '../../components/BadgeStatut';
 import { imprimerFacture, imprimerRecu, imprimerProforma } from '../../services/pdfService';
 
 const designations = [
-  'Electromenager',
-  'Telephonie',
-  'Informatique',
-  'Mobilier',
-  'Materiel de construction',
-  'Accompagnement scolaire',
-  'Pieces voitures',
-  'Habillement',
-  'Decoration',
-  'Festivite',
-  'Dedouanement marchandise',
-  'Autre'
+  'Electromenager', 'Telephonie', 'Informatique', 'Mobilier',
+  'Materiel de construction', 'Accompagnement scolaire', 'Pieces voitures',
+  'Habillement', 'Decoration', 'Festivite', 'Dedouanement marchandise', 'Autre'
 ];
 
 function formatMontant(montant) {
   return Math.round(montant || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
+// Helper pour obtenir l'id compatible MongoDB et SQLite
+function getId(obj) {
+  return obj?._id || obj?.id;
 }
 
 export default function Facturation() {
@@ -85,24 +81,17 @@ export default function Facturation() {
   const toggleDesignation = (d) => {
     setForm(f => {
       const sel = f.designations_selectionnees || [];
-      if (sel.includes(d)) {
-        return { ...f, designations_selectionnees: sel.filter(x => x !== d) };
-      } else {
-        return { ...f, designations_selectionnees: [...sel, d] };
-      }
+      if (sel.includes(d)) return { ...f, designations_selectionnees: sel.filter(x => x !== d) };
+      return { ...f, designations_selectionnees: [...sel, d] };
     });
   };
 
-  const getDesignationLabel = () => {
-    const sel = form.designations_selectionnees || [];
-    if (sel.length === 0) return '';
-    return sel.join(', ');
-  };
+  const getDesignationLabel = () => (form.designations_selectionnees || []).join(', ');
 
   const handleCreate = () => {
     if (!form.client_id || !form.montant_commande) return alert('Client et montant requis');
     if ((form.designations_selectionnees || []).length === 0) return alert('Choisissez au moins une designation');
-    const client = clients.find(c => c.id === Number(form.client_id));
+    const client = clients.find(c => getId(c) === form.client_id || String(getId(c)) === String(form.client_id));
     const dataToSend = { ...form, designation: getDesignationLabel(), frais_dossier_pct: Number(form.frais_dossier_pct) || params.frais_dossier_pct || 1 };
     if (!window.confirm('Confirmer la creation ?\n\nClient : ' + (client ? client.nom : '') + '\nMontant : ' + formatMontant(form.montant_commande) + ' FCFA\nDuree : ' + form.duree + ' mois\nTotal : ' + formatMontant(calcul.total) + ' FCFA')) return;
     createFacture(dataToSend).then(() => { load(); resetForm(); });
@@ -122,7 +111,7 @@ export default function Facturation() {
 
   const handleEditFacture = (f) => {
     setForm({
-      client_id: String(f.client_id),
+      client_id: String(getId(f.client_id) || f.client_id),
       designations_selectionnees: f.designation ? f.designation.split(', ') : [],
       date_facture: f.date_facture || new Date().toISOString().split('T')[0],
       montant_commande: String(f.montant_commande || ''),
@@ -133,50 +122,56 @@ export default function Facturation() {
       frais_dossier_pct: String(f.frais_dossier_pct || '')
     });
     setModeEdit(true);
-    setEditId(f.id);
+    setEditId(getId(f));
     window.scrollTo(0, 0);
   };
 
   const handleProforma = () => {
     if (!form.montant_commande) return alert('Entrez un montant pour generer la proforma');
-    const client = clients.find(c => c.id === Number(form.client_id));
+    const client = clients.find(c => getId(c) === form.client_id || String(getId(c)) === String(form.client_id));
     const formWithDesignation = { ...form, designation: getDesignationLabel() };
     imprimerProforma(formWithDesignation, calcul, client ? client.nom : 'Client', params);
   };
 
   const handleSelect = (f) => {
-    getFacture(f.id).then(r => setSelected(r.data));
+    getFacture(getId(f)).then(r => setSelected(r.data));
   };
 
   const handlePayer = (echId) => {
-    const ech = selected.echeances.find(e => e.id === echId);
+    const ech = selected.echeances.find(e => getId(e) === echId || String(getId(e)) === String(echId));
     if (!window.confirm('Confirmer le paiement ?\n\nEcheance : ' + (ech ? ech.numero_ech : '') + '\nMontant : ' + formatMontant(ech ? ech.montant : 0) + ' FCFA')) return;
-    marquerPaye(echId).then(() => { getFacture(selected.id).then(r => setSelected(r.data)); load(); });
+    marquerPaye(echId).then(() => {
+      getFacture(getId(selected)).then(r => setSelected(r.data));
+      load();
+    });
   };
 
   const handlePaiementPartiel = (echId) => {
     if (!montantPartiel || Number(montantPartiel) <= 0) return alert('Entrez un montant valide');
-    const ech = selected.echeances.find(e => e.id === echId);
+    const ech = selected.echeances.find(e => getId(e) === echId || String(getId(e)) === String(echId));
     if (Number(montantPartiel) >= ech.montant) return alert('Le montant partiel doit etre inferieur au montant total');
     if (!window.confirm('Confirmer le paiement partiel ?\n\nMontant paye : ' + formatMontant(montantPartiel) + ' FCFA\nReste : ' + formatMontant(ech.montant - Number(montantPartiel)) + ' FCFA')) return;
     paiementPartiel(echId, { montant_paye: Number(montantPartiel) }).then(() => {
       setShowPartiel(null);
       setMontantPartiel('');
-      getFacture(selected.id).then(r => setSelected(r.data));
+      getFacture(getId(selected)).then(r => setSelected(r.data));
       load();
     });
   };
 
   const handleAnnuler = (echId) => {
     if (!window.confirm('Confirmer l annulation ?')) return;
-    annulerPaiement(echId).then(() => { getFacture(selected.id).then(r => setSelected(r.data)); load(); });
+    annulerPaiement(echId).then(() => {
+      getFacture(getId(selected)).then(r => setSelected(r.data));
+      load();
+    });
   };
 
   const handlePenalite = () => {
     if (!window.confirm('Confirmer l application d une penalite ?')) return;
-    appliquerPenalite(selected.id).then(r => {
+    appliquerPenalite(getId(selected)).then(r => {
       alert('Penalite appliquee !\nNouveau total : ' + formatMontant(r.data.nouveauTotal) + ' FCFA');
-      getFacture(selected.id).then(r => setSelected(r.data));
+      getFacture(getId(selected)).then(r => setSelected(r.data));
     });
   };
 
@@ -193,7 +188,6 @@ export default function Facturation() {
       <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: '1.5rem', color: '#1a2332' }}>Facturation</h1>
 
       <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-
         <div style={{ minWidth: 320, background: '#162436', borderRadius: 14, padding: '1.5rem', border: modeEdit ? '2px solid #ff9800' : '1px solid rgba(255,255,255,0.07)' }}>
           <h3 style={{ margin: '0 0 1rem', color: modeEdit ? '#ff9800' : '#e8f0fe' }}>
             {modeEdit ? 'Modifier la facture' : 'Creer une facture'}
@@ -202,7 +196,7 @@ export default function Facturation() {
           <label style={labelStyle}>Client</label>
           <select value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))} style={inputStyle}>
             <option value="">Selectionner</option>
-            {clients.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+            {clients.map(c => <option key={getId(c)} value={getId(c)}>{c.nom}</option>)}
           </select>
 
           <label style={labelStyle}>Date facture</label>
@@ -212,17 +206,12 @@ export default function Facturation() {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
             {designations.map(d => (
               <span key={d} onClick={() => toggleDesignation(d)} style={{
-                padding: '4px 10px',
-                borderRadius: 20,
-                fontSize: 11,
-                cursor: 'pointer',
+                padding: '4px 10px', borderRadius: 20, fontSize: 11, cursor: 'pointer',
                 background: (form.designations_selectionnees || []).includes(d) ? '#2979ff' : '#0d1b2a',
                 color: (form.designations_selectionnees || []).includes(d) ? '#fff' : '#8ba3c1',
                 border: (form.designations_selectionnees || []).includes(d) ? '1px solid #2979ff' : '1px solid rgba(255,255,255,0.12)',
                 userSelect: 'none'
-              }}>
-                {d}
-              </span>
+              }}>{d}</span>
             ))}
           </div>
           {(form.designations_selectionnees || []).length > 0 && (
@@ -366,7 +355,7 @@ export default function Facturation() {
                 </thead>
                 <tbody>
                   {(selected.echeances || []).map(e => (
-                    <tr key={e.id} style={{ background: e.statut === 'Reste a regler' ? 'rgba(255,152,0,0.05)' : 'transparent' }}>
+                    <tr key={getId(e)} style={{ background: e.statut === 'Reste a regler' ? 'rgba(255,152,0,0.05)' : 'transparent' }}>
                       <td style={td}><span style={{ color: e.est_partiel ? '#ff9800' : '#e8f0fe' }}>{e.numero_ech}</span></td>
                       <td style={td}>{e.date_echeance}</td>
                       <td style={td}>{formatMontant(e.montant)} FCFA</td>
@@ -374,24 +363,24 @@ export default function Facturation() {
                       <td style={td}>
                         {e.statut === 'En attente' && (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            <button onClick={() => handlePayer(e.id)} style={btnStyle('#2e7d32', true)}>Payer</button>
-                            <button onClick={() => setShowPartiel(showPartiel === e.id ? null : e.id)} style={btnStyle('#ff9800', true)}>Partiel</button>
-                            {showPartiel === e.id && (
+                            <button onClick={() => handlePayer(getId(e))} style={btnStyle('#2e7d32', true)}>Payer</button>
+                            <button onClick={() => setShowPartiel(showPartiel === getId(e) ? null : getId(e))} style={btnStyle('#ff9800', true)}>Partiel</button>
+                            {showPartiel === getId(e) && (
                               <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
                                 <input type="number" placeholder="Montant" value={montantPartiel} onChange={ev => setMontantPartiel(ev.target.value)} style={{ ...inputStyle, width: 80, padding: '4px 8px', fontSize: 12 }} />
-                                <button onClick={() => handlePaiementPartiel(e.id)} style={btnStyle('#2e7d32', true)}>OK</button>
+                                <button onClick={() => handlePaiementPartiel(getId(e))} style={btnStyle('#2e7d32', true)}>OK</button>
                               </div>
                             )}
                           </div>
                         )}
                         {e.statut === 'Reste a regler' && (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            <button onClick={() => handlePayer(e.id)} style={btnStyle('#2e7d32', true)}>Solder</button>
-                            <button onClick={() => setShowPartiel(showPartiel === e.id ? null : e.id)} style={btnStyle('#ff9800', true)}>Partiel</button>
-                            {showPartiel === e.id && (
+                            <button onClick={() => handlePayer(getId(e))} style={btnStyle('#2e7d32', true)}>Solder</button>
+                            <button onClick={() => setShowPartiel(showPartiel === getId(e) ? null : getId(e))} style={btnStyle('#ff9800', true)}>Partiel</button>
+                            {showPartiel === getId(e) && (
                               <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
                                 <input type="number" placeholder="Montant" value={montantPartiel} onChange={ev => setMontantPartiel(ev.target.value)} style={{ ...inputStyle, width: 80, padding: '4px 8px', fontSize: 12 }} />
-                                <button onClick={() => handlePaiementPartiel(e.id)} style={btnStyle('#2e7d32', true)}>OK</button>
+                                <button onClick={() => handlePaiementPartiel(getId(e))} style={btnStyle('#2e7d32', true)}>OK</button>
                               </div>
                             )}
                           </div>
@@ -399,7 +388,7 @@ export default function Facturation() {
                         {(e.statut === 'Payé' || e.statut === 'Paye') && (
                           <div style={{ display: 'flex', gap: 6 }}>
                             <button onClick={() => imprimerRecu(selected, e)} style={btnStyle('#1565c0', true)}>Recu</button>
-                            <button onClick={() => handleAnnuler(e.id)} style={btnStyle('#555', true)}>Annuler</button>
+                            <button onClick={() => handleAnnuler(getId(e))} style={btnStyle('#555', true)}>Annuler</button>
                           </div>
                         )}
                       </td>
@@ -427,7 +416,7 @@ export default function Facturation() {
           </thead>
           <tbody>
             {factures.map(f => (
-              <tr key={f.id} style={{ cursor: 'pointer' }}>
+              <tr key={getId(f)} style={{ cursor: 'pointer' }}>
                 <td style={{ ...td, color: '#2979ff' }} onClick={() => handleSelect(f)}>{f.numero}</td>
                 <td style={td} onClick={() => handleSelect(f)}>{f.client_nom}</td>
                 <td style={td} onClick={() => handleSelect(f)}>{f.designation}</td>
