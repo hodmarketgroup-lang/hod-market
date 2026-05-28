@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { getFactures, getCaisse, getClients, getFacture } from '../../services/api';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, Legend } from 'recharts';
 import StatCard from '../../components/StatCard';
 import BadgeStatut from '../../components/BadgeStatut';
 
 function fmt(m) { return Math.round(m || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
 
 const MOIS = ['Tout','Janvier','Fevrier','Mars','Avril','Mai','Juin','Juillet','Aout','Septembre','Octobre','Novembre','Decembre'];
+const MOIS_COURTS = ['Jan','Fev','Mar','Avr','Mai','Jui','Jul','Aou','Sep','Oct','Nov','Dec'];
 const ANNEES = ['Tout', ...Array.from({ length: 25 }, (_, i) => String(2026 + i))];
 
 export default function Dashboard() {
@@ -17,6 +18,7 @@ export default function Dashboard() {
   const [synthese, setSynthese] = useState({ margeCommerciale: 0, depensesDirectes: 0, margeNette: 0 });
   const [allFactures, setAllFactures] = useState([]);
   const [allCaisse, setAllCaisse] = useState([]);
+  const [previsions, setPrevisions] = useState([]);
 
   useEffect(() => {
     Promise.all([getFactures(), getCaisse(), getClients()]).then(([f, c, cl]) => {
@@ -27,14 +29,42 @@ export default function Dashboard() {
       const j5 = new Date(); j5.setDate(j5.getDate() + 5);
       const j5str = j5.toISOString().split('T')[0];
 
-      Promise.all(f.data.map(fa => getFacture(fa.id))).then(details => {
+      Promise.all(f.data.map(fa => getFacture(fa._id || fa.id))).then(details => {
         const facDetail = details.map(d => d.data);
         setAllFactures(facDetail);
-        const echeances = facDetail.flatMap(d => d.echeances || []);
+
+        const echeances = facDetail.flatMap(d => (d.echeances || []).map(e => ({ ...e, client_nom: d.client_nom, numero: d.numero })));
+
         setAlertes({
           retard: echeances.filter(e => e.statut === 'En attente' && e.date_echeance < today),
           bientot: echeances.filter(e => e.statut === 'En attente' && e.date_echeance >= today && e.date_echeance <= j5str)
         });
+
+        // Calcul previsions encaissement jusqu'en fin d'annee
+        const anneeEnCours = new Date().getFullYear();
+        const moisEnCours = new Date().getMonth(); // 0-11
+        const previsionsData = [];
+
+        for (let m = moisEnCours; m < 12; m++) {
+          const moisStr = String(anneeEnCours) + '-' + String(m + 1).padStart(2, '0');
+          const echeancesMois = echeances.filter(e => {
+            if (!e.date_echeance) return false;
+            const moisEch = e.date_echeance.substring(0, 7);
+            return moisEch === moisStr && (e.statut === 'En attente' || e.statut === 'Reste a regler');
+          });
+          const montantPrev = echeancesMois.reduce((s, e) => s + (e.montant || 0), 0);
+          const nbEch = echeancesMois.length;
+
+          previsionsData.push({
+            mois: MOIS_COURTS[m],
+            moisNum: m + 1,
+            montant: montantPrev,
+            nb: nbEch,
+            echeances: echeancesMois
+          });
+        }
+
+        setPrevisions(previsionsData);
       });
     });
   }, []);
@@ -50,16 +80,15 @@ export default function Dashboard() {
 
     const facFiltrees = allFactures.filter(f => filtrerDate(f.date_facture));
     const margeCommerciale = facFiltrees.reduce((s, f) => s + (f.marge || 0) + (f.frais_dossier || 0) - (f.remise || 0), 0);
-
     const caisseFiltree = allCaisse.filter(j => j.type === 'Sortie' && !j.facture_id && filtrerDate(j.date));
     const depensesDirectes = caisseFiltree.reduce((s, j) => s + (j.sortie || 0), 0);
-
     setSynthese({ margeCommerciale, depensesDirectes, margeNette: margeCommerciale - depensesDirectes });
   }, [annee, mois, allFactures, allCaisse]);
 
   const totalEncours = stats.clients.reduce((s, c) => s + (c.encours || 0), 0);
   const totalFacture = stats.factures.reduce((s, f) => s + (f.total || 0), 0);
   const soldees = stats.factures.filter(f => f.statut === 'Soldée').length;
+  const totalPrevisions = previsions.reduce((s, p) => s + p.montant, 0);
 
   const graphMois = () => {
     const data = {};
@@ -76,6 +105,20 @@ export default function Dashboard() {
     return Object.values(data).sort((a, b) => a.mois.localeCompare(b.mois)).slice(-12);
   };
 
+  const CustomTooltipPrev = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      const data = previsions.find(p => p.mois === label);
+      return (
+        <div style={{ background: '#0d1b2a', border: '1px solid rgba(46,204,113,0.3)', borderRadius: 8, padding: '10px 14px' }}>
+          <div style={{ color: '#2ecc71', fontWeight: 700, marginBottom: 6 }}>{label} {new Date().getFullYear()}</div>
+          <div style={{ color: '#e8f0fe', fontSize: 13 }}>{fmt(payload[0]?.value)} FCFA</div>
+          <div style={{ color: '#8ba3c1', fontSize: 11 }}>{data?.nb || 0} échéance(s)</div>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div>
       <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: '1.5rem', color: '#1a2332' }}>📊 Dashboard HOD MARKET</h1>
@@ -87,6 +130,48 @@ export default function Dashboard() {
         <StatCard label="Factures soldees" value={soldees} sub={'sur ' + stats.factures.length} color="#2979ff" />
       </div>
 
+      {/* PREVISIONS ENCAISSEMENT */}
+      <div style={{ background: '#162436', borderRadius: 14, padding: '1.5rem', border: '1px solid rgba(46,204,113,0.2)', marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: '1.5rem' }}>
+          <div>
+            <h3 style={{ margin: 0, color: '#2ecc71', fontSize: 16 }}>💰 Prévisions d'encaissement {new Date().getFullYear()}</h3>
+            <div style={{ color: '#8ba3c1', fontSize: 12, marginTop: 4 }}>Échéances en attente mois par mois jusqu'en décembre</div>
+          </div>
+          <div style={{ background: '#0d1b2a', borderRadius: 10, padding: '10px 20px', border: '1px solid rgba(46,204,113,0.3)' }}>
+            <div style={{ color: '#8ba3c1', fontSize: 11 }}>Total à encaisser</div>
+            <div style={{ color: '#2ecc71', fontWeight: 700, fontSize: 20 }}>{fmt(totalPrevisions)} FCFA</div>
+          </div>
+        </div>
+
+        {/* Cartes par mois */}
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+          {previsions.map(p => (
+            <div key={p.mois} style={{
+              flex: '1 1 80px', minWidth: 80, background: p.montant > 0 ? '#0d1b2a' : '#0a1525',
+              borderRadius: 10, padding: '10px 12px', textAlign: 'center',
+              border: p.montant > 0 ? '1px solid rgba(46,204,113,0.3)' : '1px solid rgba(255,255,255,0.05)'
+            }}>
+              <div style={{ color: '#8ba3c1', fontSize: 11, marginBottom: 4 }}>{p.mois}</div>
+              <div style={{ color: p.montant > 0 ? '#2ecc71' : '#8ba3c1', fontWeight: 700, fontSize: 14 }}>
+                {p.montant > 0 ? fmt(p.montant) : '—'}
+              </div>
+              {p.montant > 0 && <div style={{ color: '#8ba3c1', fontSize: 10, marginTop: 2 }}>{p.nb} éch.</div>}
+            </div>
+          ))}
+        </div>
+
+        {/* Graphique */}
+        <ResponsiveContainer width="100%" height={180}>
+          <BarChart data={previsions} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+            <XAxis dataKey="mois" tick={{ fill: '#8ba3c1', fontSize: 11 }} />
+            <YAxis tick={{ fill: '#8ba3c1', fontSize: 10 }} tickFormatter={v => fmt(v)} />
+            <Tooltip content={<CustomTooltipPrev />} />
+            <Bar dataKey="montant" fill="#2ecc71" radius={[6,6,0,0]} name="Prévision" />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* SYNTHESE */}
       <div style={{ background: '#162436', borderRadius: 14, padding: '1.5rem', border: '1px solid rgba(255,255,255,0.07)', marginBottom: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: '1.5rem' }}>
           <h3 style={{ margin: 0, color: '#e8f0fe', fontSize: 16 }}>Synthese de la periode</h3>
@@ -136,9 +221,9 @@ export default function Dashboard() {
       <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 280, background: '#162436', borderRadius: 14, padding: '1.5rem', border: '1px solid rgba(255,255,255,0.07)' }}>
           <h3 style={{ color: '#ff5252', margin: '0 0 1rem' }}>🔴 En retard ({alertes.retard.length})</h3>
-          {alertes.retard.length === 0 ? <p style={{ color: '#8ba3c1' }}>Aucun retard</p> : alertes.retard.map(e => (
-            <div key={e.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '8px 0' }}>
-              <div style={{ color: '#e8f0fe', fontSize: 13 }}>{e.numero_ech} — {fmt(e.montant)} FCFA</div>
+          {alertes.retard.length === 0 ? <p style={{ color: '#8ba3c1' }}>Aucun retard</p> : alertes.retard.map((e, i) => (
+            <div key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '8px 0' }}>
+              <div style={{ color: '#e8f0fe', fontSize: 13 }}>{e.client_nom} — {e.numero_ech} — {fmt(e.montant)} FCFA</div>
               <div style={{ color: '#ff5252', fontSize: 12 }}>Echeance : {e.date_echeance}</div>
             </div>
           ))}
@@ -146,9 +231,9 @@ export default function Dashboard() {
 
         <div style={{ flex: 1, minWidth: 280, background: '#162436', borderRadius: 14, padding: '1.5rem', border: '1px solid rgba(255,255,255,0.07)' }}>
           <h3 style={{ color: '#ff9800', margin: '0 0 1rem' }}>🟡 Dans 5 jours ({alertes.bientot.length})</h3>
-          {alertes.bientot.length === 0 ? <p style={{ color: '#8ba3c1' }}>Aucune echeance proche</p> : alertes.bientot.map(e => (
-            <div key={e.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '8px 0' }}>
-              <div style={{ color: '#e8f0fe', fontSize: 13 }}>{e.numero_ech} — {fmt(e.montant)} FCFA</div>
+          {alertes.bientot.length === 0 ? <p style={{ color: '#8ba3c1' }}>Aucune echeance proche</p> : alertes.bientot.map((e, i) => (
+            <div key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '8px 0' }}>
+              <div style={{ color: '#e8f0fe', fontSize: 13 }}>{e.client_nom} — {e.numero_ech} — {fmt(e.montant)} FCFA</div>
               <div style={{ color: '#ff9800', fontSize: 12 }}>Echeance : {e.date_echeance}</div>
             </div>
           ))}
@@ -156,8 +241,8 @@ export default function Dashboard() {
 
         <div style={{ flex: 1, minWidth: 280, background: '#162436', borderRadius: 14, padding: '1.5rem', border: '1px solid rgba(255,255,255,0.07)' }}>
           <h3 style={{ color: '#e8f0fe', margin: '0 0 1rem' }}>📋 Dernieres factures</h3>
-          {stats.factures.slice(0, 5).map(f => (
-            <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+          {stats.factures.slice(0, 5).map((f, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               <div>
                 <div style={{ color: '#e8f0fe', fontSize: 13 }}>{f.numero}</div>
                 <div style={{ color: '#8ba3c1', fontSize: 12 }}>{f.client_nom}</div>
