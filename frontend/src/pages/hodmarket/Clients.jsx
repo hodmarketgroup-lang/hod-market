@@ -12,12 +12,40 @@ export default function Clients() {
   const [uploading, setUploading] = useState(false);
   const [modeEdit, setModeEdit] = useState(false);
   const [editId, setEditId] = useState(null);
+  const [doublons, setDoublons] = useState([]);
 
   const load = () => getClients().then(r => setClients(r.data));
   useEffect(() => { load(); }, []);
 
+  // Vérification doublons en temps réel
+  const verifierDoublons = (nom, telephone) => {
+    if (!nom && !telephone) { setDoublons([]); return; }
+    const similaires = clients.filter(c => {
+      if (modeEdit && c.id === editId) return false;
+      const nomSimilaire = nom && c.nom.toLowerCase().includes(nom.toLowerCase()) && nom.length >= 3;
+      const telSimilaire = telephone && telephone.length >= 6 && c.telephone && c.telephone.includes(telephone);
+      return nomSimilaire || telSimilaire;
+    });
+    setDoublons(similaires);
+  };
+
+  const handleNomChange = (e) => {
+    const val = e.target.value;
+    setForm(f => ({ ...f, nom: val }));
+    verifierDoublons(val, form.telephone);
+  };
+
+  const handleTelChange = (e) => {
+    const val = e.target.value;
+    setForm(f => ({ ...f, telephone: val }));
+    verifierDoublons(form.nom, val);
+  };
+
   const handleCreate = () => {
     if (!form.nom) return alert('Nom requis');
+    if (doublons.length > 0) {
+      if (!window.confirm(`⚠️ ${doublons.length} client(s) similaire(s) trouvé(s) :\n${doublons.map(d => `- ${d.nom} (${d.telephone || 'sans tél'})`).join('\n')}\n\nVoulez-vous quand même créer ce client ?`)) return;
+    }
     if (modeEdit) {
       updateClient(editId, form).then(() => { resetForm(); load(); alert('Client mis a jour !'); });
     } else {
@@ -29,6 +57,7 @@ export default function Clients() {
     setForm({ nom: '', telephone: '', adresse: '', type_client: 'Salarie', nom_societe: '', contact_urgence_nom: '', contact_urgence_lien: '', contact_urgence_telephone: '' });
     setModeEdit(false);
     setEditId(null);
+    setDoublons([]);
   };
 
   const handleEdit = (client) => {
@@ -43,7 +72,8 @@ export default function Clients() {
       contact_urgence_telephone: client.contact_urgence_telephone || ''
     });
     setModeEdit(true);
-    setEditId(client.id);
+    setEditId(client.id || client._id);
+    setDoublons([]);
     window.scrollTo(0, 0);
   };
 
@@ -61,12 +91,15 @@ export default function Clients() {
     setUploading(true);
     const formData = new FormData();
     formData.append('fichier', file);
-    uploadDocument(situation.client.id, formData).then(() => { loadDocuments(situation.client.id); setUploading(false); }).catch(() => setUploading(false));
+    uploadDocument(situation.client.id || situation.client._id, formData)
+      .then(() => { loadDocuments(situation.client.id || situation.client._id); setUploading(false); })
+      .catch(() => setUploading(false));
   };
 
   const handleSupprimer = (fichier) => {
     if (!window.confirm('Supprimer ce document ?')) return;
-    supprimerDocument(situation.client.id, fichier).then(() => { loadDocuments(situation.client.id); });
+    supprimerDocument(situation.client.id || situation.client._id, fichier)
+      .then(() => { loadDocuments(situation.client.id || situation.client._id); });
   };
 
   const formatTaille = (bytes) => {
@@ -95,11 +128,38 @@ export default function Clients() {
             {modeEdit ? 'Modifier le client' : 'Ajouter un client'}
           </h3>
 
+          {/* Alerte doublons */}
+          {doublons.length > 0 && (
+            <div style={{
+              background: 'rgba(255,152,0,0.15)', border: '1px solid rgba(255,152,0,0.4)',
+              borderRadius: 8, padding: '10px 14px', marginBottom: 12
+            }}>
+              <div style={{ color: '#ff9800', fontWeight: 700, fontSize: 13, marginBottom: 6 }}>
+                ⚠️ Client(s) similaire(s) trouvé(s) :
+              </div>
+              {doublons.map(d => (
+                <div key={d.id || d._id} style={{ color: '#ffcc80', fontSize: 12, marginBottom: 4 }}>
+                  • {d.nom} — {d.telephone || 'sans tél'} — Encours: {Math.round(d.encours || 0).toLocaleString()} FCFA
+                </div>
+              ))}
+            </div>
+          )}
+
           <label style={labelStyle}>Nom *</label>
-          <input placeholder="Nom du client" value={form.nom} onChange={e => setForm(f => ({ ...f, nom: e.target.value }))} style={inputStyle} />
+          <input
+            placeholder="Nom du client"
+            value={form.nom}
+            onChange={handleNomChange}
+            style={inputStyle}
+          />
 
           <label style={labelStyle}>Telephone</label>
-          <input placeholder="Ex: 242XXXXXXXX" value={form.telephone} onChange={e => setForm(f => ({ ...f, telephone: e.target.value }))} style={inputStyle} />
+          <input
+            placeholder="Ex: 242XXXXXXXX"
+            value={form.telephone}
+            onChange={handleTelChange}
+            style={inputStyle}
+          />
 
           <label style={labelStyle}>Adresse</label>
           <input placeholder="Adresse du client" value={form.adresse} onChange={e => setForm(f => ({ ...f, adresse: e.target.value }))} style={inputStyle} />
@@ -171,8 +231,8 @@ export default function Clients() {
                   </tr>
                 </thead>
                 <tbody>
-                  {situation.echeances.map(e => (
-                    <tr key={e.id} style={{ fontSize: 13 }}>
+                  {situation.echeances.map((e, i) => (
+                    <tr key={e._id || i} style={{ fontSize: 13 }}>
                       <td style={td}>{e.numero}</td>
                       <td style={td}>{e.numero_ech}</td>
                       <td style={td}>{e.date_echeance}</td>
@@ -207,7 +267,7 @@ export default function Clients() {
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <a href={getUrlDocument(situation.client.id, doc.nomServeur)} target="_blank" rel="noreferrer" style={{ background: '#1565c0', color: '#fff', borderRadius: 6, padding: '5px 12px', fontWeight: 600, fontSize: 12, textDecoration: 'none' }}>Telecharger</a>
+                        <a href={getUrlDocument(situation.client.id || situation.client._id, doc.nomServeur)} target="_blank" rel="noreferrer" style={{ background: '#1565c0', color: '#fff', borderRadius: 6, padding: '5px 12px', fontWeight: 600, fontSize: 12, textDecoration: 'none' }}>Telecharger</a>
                         <button onClick={() => handleSupprimer(doc.nomServeur)} style={btnStyle('#c62828', true)}>Supprimer</button>
                       </div>
                     </div>
@@ -236,7 +296,7 @@ export default function Clients() {
           </thead>
           <tbody>
             {filtered.map(c => (
-              <tr key={c.id} onClick={() => handleSelect(c.id)} style={{ cursor: 'pointer', fontSize: 13 }}>
+              <tr key={c.id || c._id} onClick={() => handleSelect(c.id || c._id)} style={{ cursor: 'pointer', fontSize: 13 }}>
                 <td style={td}>{c.nom}</td>
                 <td style={td}>{c.telephone || '-'}</td>
                 <td style={td}><span style={{ background: '#1c2e44', color: '#8ba3c1', borderRadius: 20, padding: '2px 10px', fontSize: 11 }}>{c.type_client}</span></td>
@@ -244,7 +304,7 @@ export default function Clients() {
                 <td style={td}>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button onClick={e => { e.stopPropagation(); handleEdit(c); }} style={btnStyle('#ff9800', true)}>Modifier</button>
-                    <button onClick={e => { e.stopPropagation(); deleteClient(c.id).then(load); }} style={btnStyle('#c62828', true)}>Supprimer</button>
+                    <button onClick={e => { e.stopPropagation(); deleteClient(c.id || c._id).then(load); }} style={btnStyle('#c62828', true)}>Supprimer</button>
                   </div>
                 </td>
               </tr>
