@@ -14,7 +14,19 @@ function formatMontant(montant) {
   return Math.round(montant || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
-// Helper pour obtenir l'id compatible MongoDB et SQLite
+// Formate la saisie avec separateur de milliers
+function formatSaisie(valeur) {
+  if (!valeur && valeur !== 0) return '';
+  const chiffres = String(valeur).replace(/\s/g, '');
+  if (isNaN(chiffres)) return valeur;
+  return chiffres.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
+// Enleve les espaces pour avoir la valeur numerique
+function parseSaisie(valeur) {
+  return String(valeur).replace(/\s/g, '');
+}
+
 function getId(obj) {
   return obj?._id || obj?.id;
 }
@@ -52,13 +64,13 @@ export default function Facturation() {
     if (!params || !form.montant_commande || !form.duree) return;
     const tauxMap = { 1: 'taux_1m', 2: 'taux_2m', 3: 'taux_3m', 4: 'taux_4m', 5: 'taux_5m', 6: 'taux_6m' };
     const taux = params[tauxMap[Number(form.duree)]] || 0;
-    const mt = Number(form.montant_commande);
-    const remise = Number(form.remise || 0);
+    const mt = Number(parseSaisie(form.montant_commande));
+    const remise = Number(parseSaisie(form.remise || '0'));
     const marge_brute = mt * (taux / 100);
     const marge = marge_brute - remise;
     const fraisPct = Number(form.frais_dossier_pct) || params.frais_dossier_pct || 1;
     const frais = mt * (fraisPct / 100);
-    const total = mt + marge + frais + Number(form.depot_garantie || 0) - Number(form.acompte || 0);
+    const total = mt + marge + frais + Number(parseSaisie(form.depot_garantie || '0')) - Number(parseSaisie(form.acompte || '0'));
     setCalcul({ taux, marge_brute, marge, frais, fraisPct, total, mensualite: Math.round(total / Number(form.duree)) });
   }, [form.montant_commande, form.duree, form.acompte, form.depot_garantie, form.remise, form.frais_dossier_pct, params]);
 
@@ -78,6 +90,12 @@ export default function Facturation() {
     setEditId(null);
   };
 
+  const handleMontantChange = (field, valeur) => {
+    const chiffres = valeur.replace(/\s/g, '').replace(/[^0-9]/g, '');
+    const formate = chiffres ? chiffres.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') : '';
+    setForm(f => ({ ...f, [field]: formate }));
+  };
+
   const toggleDesignation = (d) => {
     setForm(f => {
       const sel = f.designations_selectionnees || [];
@@ -91,16 +109,32 @@ export default function Facturation() {
   const handleCreate = () => {
     if (!form.client_id || !form.montant_commande) return alert('Client et montant requis');
     if ((form.designations_selectionnees || []).length === 0) return alert('Choisissez au moins une designation');
-    const client = clients.find(c => getId(c) === form.client_id || String(getId(c)) === String(form.client_id));
-    const dataToSend = { ...form, designation: getDesignationLabel(), frais_dossier_pct: Number(form.frais_dossier_pct) || params.frais_dossier_pct || 1 };
-    if (!window.confirm('Confirmer la creation ?\n\nClient : ' + (client ? client.nom : '') + '\nMontant : ' + formatMontant(form.montant_commande) + ' FCFA\nDuree : ' + form.duree + ' mois\nTotal : ' + formatMontant(calcul.total) + ' FCFA')) return;
+    const client = clients.find(c => String(getId(c)) === String(form.client_id));
+    const dataToSend = {
+      ...form,
+      montant_commande: parseSaisie(form.montant_commande),
+      acompte: parseSaisie(form.acompte || '0'),
+      depot_garantie: parseSaisie(form.depot_garantie || '0'),
+      remise: parseSaisie(form.remise || '0'),
+      designation: getDesignationLabel(),
+      frais_dossier_pct: Number(form.frais_dossier_pct) || params.frais_dossier_pct || 1
+    };
+    if (!window.confirm('Confirmer la creation ?\n\nClient : ' + (client ? client.nom : '') + '\nMontant : ' + formatMontant(parseSaisie(form.montant_commande)) + ' FCFA\nDuree : ' + form.duree + ' mois\nTotal : ' + formatMontant(calcul.total) + ' FCFA')) return;
     createFacture(dataToSend).then(() => { load(); resetForm(); });
   };
 
   const handleUpdate = () => {
     if (!form.client_id || !form.montant_commande) return alert('Client et montant requis');
     if (!window.confirm('Confirmer la modification ?\n\nAttention : les echeances non payees seront recalculees.')) return;
-    const dataToSend = { ...form, designation: getDesignationLabel(), frais_dossier_pct: Number(form.frais_dossier_pct) || params.frais_dossier_pct || 1 };
+    const dataToSend = {
+      ...form,
+      montant_commande: parseSaisie(form.montant_commande),
+      acompte: parseSaisie(form.acompte || '0'),
+      depot_garantie: parseSaisie(form.depot_garantie || '0'),
+      remise: parseSaisie(form.remise || '0'),
+      designation: getDesignationLabel(),
+      frais_dossier_pct: Number(form.frais_dossier_pct) || params.frais_dossier_pct || 1
+    };
     updateFacture(editId, dataToSend).then(() => {
       load();
       getFacture(editId).then(r => setSelected(r.data));
@@ -114,11 +148,11 @@ export default function Facturation() {
       client_id: String(getId(f.client_id) || f.client_id),
       designations_selectionnees: f.designation ? f.designation.split(', ') : [],
       date_facture: f.date_facture || new Date().toISOString().split('T')[0],
-      montant_commande: String(f.montant_commande || ''),
+      montant_commande: formatSaisie(f.montant_commande || ''),
       duree: String(f.duree || '1'),
-      acompte: String(f.acompte || '0'),
-      depot_garantie: String(f.depot_garantie || '0'),
-      remise: String(f.remise || '0'),
+      acompte: formatSaisie(f.acompte || '0'),
+      depot_garantie: formatSaisie(f.depot_garantie || '0'),
+      remise: formatSaisie(f.remise || '0'),
       frais_dossier_pct: String(f.frais_dossier_pct || '')
     });
     setModeEdit(true);
@@ -128,8 +162,15 @@ export default function Facturation() {
 
   const handleProforma = () => {
     if (!form.montant_commande) return alert('Entrez un montant pour generer la proforma');
-    const client = clients.find(c => getId(c) === form.client_id || String(getId(c)) === String(form.client_id));
-    const formWithDesignation = { ...form, designation: getDesignationLabel() };
+    const client = clients.find(c => String(getId(c)) === String(form.client_id));
+    const formWithDesignation = {
+      ...form,
+      montant_commande: parseSaisie(form.montant_commande),
+      acompte: parseSaisie(form.acompte || '0'),
+      depot_garantie: parseSaisie(form.depot_garantie || '0'),
+      remise: parseSaisie(form.remise || '0'),
+      designation: getDesignationLabel()
+    };
     imprimerProforma(formWithDesignation, calcul, client ? client.nom : 'Client', params);
   };
 
@@ -138,7 +179,7 @@ export default function Facturation() {
   };
 
   const handlePayer = (echId) => {
-    const ech = selected.echeances.find(e => getId(e) === echId || String(getId(e)) === String(echId));
+    const ech = selected.echeances.find(e => String(getId(e)) === String(echId));
     if (!window.confirm('Confirmer le paiement ?\n\nEcheance : ' + (ech ? ech.numero_ech : '') + '\nMontant : ' + formatMontant(ech ? ech.montant : 0) + ' FCFA')) return;
     marquerPaye(echId).then(() => {
       getFacture(getId(selected)).then(r => setSelected(r.data));
@@ -147,11 +188,12 @@ export default function Facturation() {
   };
 
   const handlePaiementPartiel = (echId) => {
-    if (!montantPartiel || Number(montantPartiel) <= 0) return alert('Entrez un montant valide');
-    const ech = selected.echeances.find(e => getId(e) === echId || String(getId(e)) === String(echId));
-    if (Number(montantPartiel) >= ech.montant) return alert('Le montant partiel doit etre inferieur au montant total');
-    if (!window.confirm('Confirmer le paiement partiel ?\n\nMontant paye : ' + formatMontant(montantPartiel) + ' FCFA\nReste : ' + formatMontant(ech.montant - Number(montantPartiel)) + ' FCFA')) return;
-    paiementPartiel(echId, { montant_paye: Number(montantPartiel) }).then(() => {
+    if (!montantPartiel || Number(parseSaisie(montantPartiel)) <= 0) return alert('Entrez un montant valide');
+    const ech = selected.echeances.find(e => String(getId(e)) === String(echId));
+    const montant = Number(parseSaisie(montantPartiel));
+    if (montant >= ech.montant) return alert('Le montant partiel doit etre inferieur au montant total');
+    if (!window.confirm('Confirmer le paiement partiel ?\n\nMontant paye : ' + formatMontant(montant) + ' FCFA\nReste : ' + formatMontant(ech.montant - montant) + ' FCFA')) return;
+    paiementPartiel(echId, { montant_paye: montant }).then(() => {
       setShowPartiel(null);
       setMontantPartiel('');
       getFacture(getId(selected)).then(r => setSelected(r.data));
@@ -221,7 +263,13 @@ export default function Facturation() {
           )}
 
           <label style={labelStyle}>Montant commande (FCFA)</label>
-          <input type="number" placeholder="Ex: 500000" value={form.montant_commande} onChange={e => setForm(f => ({ ...f, montant_commande: e.target.value }))} style={inputStyle} />
+          <input
+            type="text"
+            placeholder="Ex: 500 000"
+            value={form.montant_commande}
+            onChange={e => handleMontantChange('montant_commande', e.target.value)}
+            style={inputStyle}
+          />
 
           <div style={{ display: 'flex', gap: 10 }}>
             <div style={{ flex: 1 }}>
@@ -239,35 +287,57 @@ export default function Facturation() {
           <div style={{ display: 'flex', gap: 10 }}>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Acompte</label>
-              <input type="number" value={form.acompte} onChange={e => setForm(f => ({ ...f, acompte: e.target.value }))} style={inputStyle} />
+              <input
+                type="text"
+                value={form.acompte}
+                onChange={e => handleMontantChange('acompte', e.target.value)}
+                style={inputStyle}
+              />
             </div>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Depot garantie</label>
-              <input type="number" value={form.depot_garantie} onChange={e => setForm(f => ({ ...f, depot_garantie: e.target.value }))} style={inputStyle} />
+              <input
+                type="text"
+                value={form.depot_garantie}
+                onChange={e => handleMontantChange('depot_garantie', e.target.value)}
+                style={inputStyle}
+              />
             </div>
           </div>
 
           <div style={{ display: 'flex', gap: 10 }}>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Remise sur marge (FCFA)</label>
-              <input type="number" placeholder="Ex: 5000" value={form.remise} onChange={e => setForm(f => ({ ...f, remise: e.target.value }))} style={inputStyle} />
+              <input
+                type="text"
+                placeholder="Ex: 5 000"
+                value={form.remise}
+                onChange={e => handleMontantChange('remise', e.target.value)}
+                style={inputStyle}
+              />
             </div>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Frais dossier (%)</label>
-              <input type="number" placeholder={'Defaut : ' + (params ? params.frais_dossier_pct : 1) + '%'} value={form.frais_dossier_pct} onChange={e => setForm(f => ({ ...f, frais_dossier_pct: e.target.value }))} style={inputStyle} />
+              <input
+                type="number"
+                placeholder={'Defaut : ' + (params ? params.frais_dossier_pct : 1) + '%'}
+                value={form.frais_dossier_pct}
+                onChange={e => setForm(f => ({ ...f, frais_dossier_pct: e.target.value }))}
+                style={inputStyle}
+              />
             </div>
           </div>
 
-          {form.montant_commande > 0 && (
+          {parseSaisie(form.montant_commande) > 0 && (
             <div style={{ background: '#0d1b2a', borderRadius: 10, padding: '1rem', marginTop: 14, fontSize: 13 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
                 <span style={{ color: '#8ba3c1' }}>Marge brute ({calcul.taux}%)</span>
                 <span>{formatMontant(calcul.marge_brute)} FCFA</span>
               </div>
-              {Number(form.remise) > 0 && (
+              {Number(parseSaisie(form.remise)) > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
                   <span style={{ color: '#ff5252' }}>Remise</span>
-                  <span style={{ color: '#ff5252' }}>- {formatMontant(form.remise)} FCFA</span>
+                  <span style={{ color: '#ff5252' }}>- {formatMontant(parseSaisie(form.remise))} FCFA</span>
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
@@ -367,7 +437,16 @@ export default function Facturation() {
                             <button onClick={() => setShowPartiel(showPartiel === getId(e) ? null : getId(e))} style={btnStyle('#ff9800', true)}>Partiel</button>
                             {showPartiel === getId(e) && (
                               <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-                                <input type="number" placeholder="Montant" value={montantPartiel} onChange={ev => setMontantPartiel(ev.target.value)} style={{ ...inputStyle, width: 80, padding: '4px 8px', fontSize: 12 }} />
+                                <input
+                                  type="text"
+                                  placeholder="Montant"
+                                  value={montantPartiel}
+                                  onChange={ev => {
+                                    const chiffres = ev.target.value.replace(/\s/g, '').replace(/[^0-9]/g, '');
+                                    setMontantPartiel(chiffres ? chiffres.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') : '');
+                                  }}
+                                  style={{ ...inputStyle, width: 100, padding: '4px 8px', fontSize: 12 }}
+                                />
                                 <button onClick={() => handlePaiementPartiel(getId(e))} style={btnStyle('#2e7d32', true)}>OK</button>
                               </div>
                             )}
@@ -379,7 +458,16 @@ export default function Facturation() {
                             <button onClick={() => setShowPartiel(showPartiel === getId(e) ? null : getId(e))} style={btnStyle('#ff9800', true)}>Partiel</button>
                             {showPartiel === getId(e) && (
                               <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-                                <input type="number" placeholder="Montant" value={montantPartiel} onChange={ev => setMontantPartiel(ev.target.value)} style={{ ...inputStyle, width: 80, padding: '4px 8px', fontSize: 12 }} />
+                                <input
+                                  type="text"
+                                  placeholder="Montant"
+                                  value={montantPartiel}
+                                  onChange={ev => {
+                                    const chiffres = ev.target.value.replace(/\s/g, '').replace(/[^0-9]/g, '');
+                                    setMontantPartiel(chiffres ? chiffres.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') : '');
+                                  }}
+                                  style={{ ...inputStyle, width: 100, padding: '4px 8px', fontSize: 12 }}
+                                />
                                 <button onClick={() => handlePaiementPartiel(getId(e))} style={btnStyle('#2e7d32', true)}>OK</button>
                               </div>
                             )}
