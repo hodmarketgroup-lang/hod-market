@@ -296,9 +296,14 @@ export default function Facturation() {
 
   const fraisPctAffiche = Number(form.frais_dossier_pct) || (params ? params.frais_dossier_pct : 1) || 1;
 
-  // Séparation factures en cours / soldées
-  const facturesEnCours = factures.filter(f => f.statut !== 'Soldée' && f.statut !== 'soldée');
-  const facturesSoldees = factures.filter(f => f.statut === 'Soldée' || f.statut === 'soldée');
+  // Séparation factures en cours / soldées (gère toutes les variantes)
+  const estSoldee = (statut) => {
+    if (!statut) return false;
+    const s = statut.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return s === 'soldee' || s === 'solde';
+  };
+  const facturesEnCours = factures.filter(f => !estSoldee(f.statut));
+  const facturesSoldees = factures.filter(f => estSoldee(f.statut));
 
   // Filtrage en cours
   const filteredEnCours = facturesEnCours.filter(f => {
