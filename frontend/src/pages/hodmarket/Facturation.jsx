@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { getClients, getFactures, getFacture, createFacture, updateFacture,
          marquerPaye, paiementPartiel, annulerPaiement, appliquerPenalite, getParams } from '../../services/api';
 import BadgeStatut from '../../components/BadgeStatut';
@@ -14,7 +14,6 @@ function formatMontant(montant) {
   return Math.round(montant || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
-// Formate la saisie avec separateur de milliers
 function formatSaisie(valeur) {
   if (!valeur && valeur !== 0) return '';
   const chiffres = String(valeur).replace(/\s/g, '');
@@ -22,13 +21,87 @@ function formatSaisie(valeur) {
   return chiffres.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
-// Enleve les espaces pour avoir la valeur numerique
 function parseSaisie(valeur) {
   return String(valeur).replace(/\s/g, '');
 }
 
 function getId(obj) {
   return obj?._id || obj?.id;
+}
+
+// Composant autocomplete client
+function ClientAutocomplete({ clients, value, onChange }) {
+  const [texte, setTexte] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSugg, setShowSugg] = useState(false);
+  const ref = useRef();
+
+  useEffect(() => {
+    if (value) {
+      const c = clients.find(c => String(getId(c)) === String(value));
+      if (c) setTexte(c.nom);
+    } else {
+      setTexte('');
+    }
+  }, [value, clients]);
+
+  const handleChange = (e) => {
+    const val = e.target.value;
+    setTexte(val);
+    if (val.length >= 1) {
+      const sugg = clients.filter(c => c.nom.toLowerCase().includes(val.toLowerCase()));
+      setSuggestions(sugg);
+      setShowSugg(true);
+    } else {
+      setSuggestions([]);
+      setShowSugg(false);
+      onChange('');
+    }
+  };
+
+  const handleSelect = (c) => {
+    setTexte(c.nom);
+    onChange(String(getId(c)));
+    setShowSugg(false);
+  };
+
+  useEffect(() => {
+    const handleClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setShowSugg(false); };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input
+        type="text"
+        placeholder="Tapez le nom du client..."
+        value={texte}
+        onChange={handleChange}
+        onFocus={() => { if (texte.length >= 1) setShowSugg(true); }}
+        style={inputStyle}
+      />
+      {showSugg && suggestions.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1000,
+          background: '#0d1b2a', border: '1px solid rgba(255,255,255,0.15)',
+          borderRadius: 8, maxHeight: 200, overflowY: 'auto', boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+        }}>
+          {suggestions.map(c => (
+            <div key={getId(c)} onClick={() => handleSelect(c)} style={{
+              padding: '10px 14px', cursor: 'pointer', color: '#e8f0fe', fontSize: 13,
+              borderBottom: '1px solid rgba(255,255,255,0.05)'
+            }}
+            onMouseEnter={e => e.target.style.background = '#162436'}
+            onMouseLeave={e => e.target.style.background = 'transparent'}
+            >
+              {c.nom} {c.telephone ? <span style={{ color: '#8ba3c1', fontSize: 11 }}>— {c.telephone}</span> : ''}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Facturation() {
@@ -40,6 +113,12 @@ export default function Facturation() {
   const [editId, setEditId] = useState(null);
   const [showPartiel, setShowPartiel] = useState(null);
   const [montantPartiel, setMontantPartiel] = useState('');
+
+  // Filtres liste en cours
+  const [filtreEncours, setFiltreEncours] = useState({ client: '', numero: '', designation: '', statut: '' });
+  // Filtres liste soldées
+  const [filtreSoldees, setFiltreSoldees] = useState({ client: '', numero: '', designation: '' });
+
   const [form, setForm] = useState({
     client_id: '',
     designations_selectionnees: [],
@@ -181,10 +260,7 @@ export default function Facturation() {
   const handlePayer = (echId) => {
     const ech = selected.echeances.find(e => String(getId(e)) === String(echId));
     if (!window.confirm('Confirmer le paiement ?\n\nEcheance : ' + (ech ? ech.numero_ech : '') + '\nMontant : ' + formatMontant(ech ? ech.montant : 0) + ' FCFA')) return;
-    marquerPaye(echId).then(() => {
-      getFacture(getId(selected)).then(r => setSelected(r.data));
-      load();
-    });
+    marquerPaye(echId).then(() => { getFacture(getId(selected)).then(r => setSelected(r.data)); load(); });
   };
 
   const handlePaiementPartiel = (echId) => {
@@ -194,19 +270,14 @@ export default function Facturation() {
     if (montant >= ech.montant) return alert('Le montant partiel doit etre inferieur au montant total');
     if (!window.confirm('Confirmer le paiement partiel ?\n\nMontant paye : ' + formatMontant(montant) + ' FCFA\nReste : ' + formatMontant(ech.montant - montant) + ' FCFA')) return;
     paiementPartiel(echId, { montant_paye: montant }).then(() => {
-      setShowPartiel(null);
-      setMontantPartiel('');
-      getFacture(getId(selected)).then(r => setSelected(r.data));
-      load();
+      setShowPartiel(null); setMontantPartiel('');
+      getFacture(getId(selected)).then(r => setSelected(r.data)); load();
     });
   };
 
   const handleAnnuler = (echId) => {
     if (!window.confirm('Confirmer l annulation ?')) return;
-    annulerPaiement(echId).then(() => {
-      getFacture(getId(selected)).then(r => setSelected(r.data));
-      load();
-    });
+    annulerPaiement(echId).then(() => { getFacture(getId(selected)).then(r => setSelected(r.data)); load(); });
   };
 
   const handlePenalite = () => {
@@ -225,21 +296,47 @@ export default function Facturation() {
 
   const fraisPctAffiche = Number(form.frais_dossier_pct) || (params ? params.frais_dossier_pct : 1) || 1;
 
+  // Séparation factures en cours / soldées
+  const facturesEnCours = factures.filter(f => f.statut !== 'Soldée' && f.statut !== 'soldée');
+  const facturesSoldees = factures.filter(f => f.statut === 'Soldée' || f.statut === 'soldée');
+
+  // Filtrage en cours
+  const filteredEnCours = facturesEnCours.filter(f => {
+    if (filtreEncours.client && !f.client_nom?.toLowerCase().includes(filtreEncours.client.toLowerCase())) return false;
+    if (filtreEncours.numero && !f.numero?.toLowerCase().includes(filtreEncours.numero.toLowerCase())) return false;
+    if (filtreEncours.designation && !f.designation?.toLowerCase().includes(filtreEncours.designation.toLowerCase())) return false;
+    if (filtreEncours.statut && !f.statut?.toLowerCase().includes(filtreEncours.statut.toLowerCase())) return false;
+    return true;
+  });
+
+  // Filtrage soldées
+  const filteredSoldees = facturesSoldees.filter(f => {
+    if (filtreSoldees.client && !f.client_nom?.toLowerCase().includes(filtreSoldees.client.toLowerCase())) return false;
+    if (filtreSoldees.numero && !f.numero?.toLowerCase().includes(filtreSoldees.numero.toLowerCase())) return false;
+    if (filtreSoldees.designation && !f.designation?.toLowerCase().includes(filtreSoldees.designation.toLowerCase())) return false;
+    return true;
+  });
+
+  const totalEnCours = filteredEnCours.reduce((s, f) => s + (f.total || 0), 0);
+  const totalSoldees = filteredSoldees.reduce((s, f) => s + (f.total || 0), 0);
+
   return (
     <div>
       <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: '1.5rem', color: '#1a2332' }}>Facturation</h1>
 
       <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+        {/* FORMULAIRE */}
         <div style={{ minWidth: 320, background: '#162436', borderRadius: 14, padding: '1.5rem', border: modeEdit ? '2px solid #ff9800' : '1px solid rgba(255,255,255,0.07)' }}>
           <h3 style={{ margin: '0 0 1rem', color: modeEdit ? '#ff9800' : '#e8f0fe' }}>
             {modeEdit ? 'Modifier la facture' : 'Creer une facture'}
           </h3>
 
           <label style={labelStyle}>Client</label>
-          <select value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))} style={inputStyle}>
-            <option value="">Selectionner</option>
-            {clients.map(c => <option key={getId(c)} value={getId(c)}>{c.nom}</option>)}
-          </select>
+          <ClientAutocomplete
+            clients={clients}
+            value={form.client_id}
+            onChange={val => setForm(f => ({ ...f, client_id: val }))}
+          />
 
           <label style={labelStyle}>Date facture</label>
           <input type="date" value={form.date_facture} onChange={e => setForm(f => ({ ...f, date_facture: e.target.value }))} style={inputStyle} />
@@ -257,19 +354,11 @@ export default function Facturation() {
             ))}
           </div>
           {(form.designations_selectionnees || []).length > 0 && (
-            <div style={{ color: '#2979ff', fontSize: 11, marginBottom: 8 }}>
-              Selectionne : {form.designations_selectionnees.join(', ')}
-            </div>
+            <div style={{ color: '#2979ff', fontSize: 11, marginBottom: 8 }}>Selectionne : {form.designations_selectionnees.join(', ')}</div>
           )}
 
           <label style={labelStyle}>Montant commande (FCFA)</label>
-          <input
-            type="text"
-            placeholder="Ex: 500 000"
-            value={form.montant_commande}
-            onChange={e => handleMontantChange('montant_commande', e.target.value)}
-            style={inputStyle}
-          />
+          <input type="text" placeholder="Ex: 500 000" value={form.montant_commande} onChange={e => handleMontantChange('montant_commande', e.target.value)} style={inputStyle} />
 
           <div style={{ display: 'flex', gap: 10 }}>
             <div style={{ flex: 1 }}>
@@ -287,44 +376,22 @@ export default function Facturation() {
           <div style={{ display: 'flex', gap: 10 }}>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Acompte</label>
-              <input
-                type="text"
-                value={form.acompte}
-                onChange={e => handleMontantChange('acompte', e.target.value)}
-                style={inputStyle}
-              />
+              <input type="text" value={form.acompte} onChange={e => handleMontantChange('acompte', e.target.value)} style={inputStyle} />
             </div>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Depot garantie</label>
-              <input
-                type="text"
-                value={form.depot_garantie}
-                onChange={e => handleMontantChange('depot_garantie', e.target.value)}
-                style={inputStyle}
-              />
+              <input type="text" value={form.depot_garantie} onChange={e => handleMontantChange('depot_garantie', e.target.value)} style={inputStyle} />
             </div>
           </div>
 
           <div style={{ display: 'flex', gap: 10 }}>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Remise sur marge (FCFA)</label>
-              <input
-                type="text"
-                placeholder="Ex: 5 000"
-                value={form.remise}
-                onChange={e => handleMontantChange('remise', e.target.value)}
-                style={inputStyle}
-              />
+              <input type="text" placeholder="Ex: 5 000" value={form.remise} onChange={e => handleMontantChange('remise', e.target.value)} style={inputStyle} />
             </div>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Frais dossier (%)</label>
-              <input
-                type="number"
-                placeholder={'Defaut : ' + (params ? params.frais_dossier_pct : 1) + '%'}
-                value={form.frais_dossier_pct}
-                onChange={e => setForm(f => ({ ...f, frais_dossier_pct: e.target.value }))}
-                style={inputStyle}
-              />
+              <input type="number" placeholder={'Defaut : ' + (params ? params.frais_dossier_pct : 1) + '%'} value={form.frais_dossier_pct} onChange={e => setForm(f => ({ ...f, frais_dossier_pct: e.target.value }))} style={inputStyle} />
             </div>
           </div>
 
@@ -375,9 +442,9 @@ export default function Facturation() {
           </div>
         </div>
 
+        {/* DETAIL FACTURE */}
         <div style={{ flex: 1, minWidth: 300, background: '#162436', borderRadius: 14, padding: '1.5rem', border: '1px solid rgba(255,255,255,0.07)' }}>
           <h3 style={{ margin: '0 0 1rem', color: '#e8f0fe' }}>Detail facture</h3>
-
           {!selected ? (
             <p style={{ color: '#8ba3c1' }}>Cliquez sur une facture pour voir le detail.</p>
           ) : (
@@ -396,31 +463,22 @@ export default function Facturation() {
                   <BadgeStatut statut={selected.statut} />
                 </div>
               </div>
-
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: '1rem', fontSize: 13 }}>
                 <div><span style={{ color: '#8ba3c1' }}>Montant : </span>{formatMontant(selected.montant_commande)} FCFA</div>
                 <div><span style={{ color: '#8ba3c1' }}>Marge : </span>{formatMontant(selected.marge)} FCFA</div>
                 <div><span style={{ color: '#8ba3c1' }}>Frais : </span>{formatMontant(selected.frais_dossier)} FCFA</div>
-                {selected.remise > 0 && (
-                  <div><span style={{ color: '#ff5252' }}>Remise : </span><span style={{ color: '#ff5252' }}>- {formatMontant(selected.remise)} FCFA</span></div>
-                )}
+                {selected.remise > 0 && <div><span style={{ color: '#ff5252' }}>Remise : </span><span style={{ color: '#ff5252' }}>- {formatMontant(selected.remise)} FCFA</span></div>}
                 <div><span style={{ color: '#8ba3c1' }}>Total : </span><strong style={{ color: '#00e676' }}>{formatMontant(selected.total)} FCFA</strong></div>
               </div>
-
               <div style={{ display: 'flex', gap: 10, marginBottom: '1rem', flexWrap: 'wrap' }}>
                 <button onClick={() => handleEditFacture(selected)} style={{ ...btnStyle('#ff9800'), fontSize: 13 }}>Modifier</button>
                 <button onClick={handlePenalite} style={{ ...btnStyle('#e65100'), fontSize: 13 }}>Penalite</button>
                 <button onClick={() => imprimerFacture(selected)} style={{ ...btnStyle('#1565c0'), fontSize: 13 }}>PDF Facture</button>
               </div>
-
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ color: '#8ba3c1' }}>
-                    <th style={th}>Echeance</th>
-                    <th style={th}>Date</th>
-                    <th style={th}>Montant</th>
-                    <th style={th}>Statut</th>
-                    <th style={th}>Action</th>
+                    <th style={th}>Echeance</th><th style={th}>Date</th><th style={th}>Montant</th><th style={th}>Statut</th><th style={th}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -431,43 +489,15 @@ export default function Facturation() {
                       <td style={td}>{formatMontant(e.montant)} FCFA</td>
                       <td style={td}><span style={{ color: getStatutColor(e.statut), fontWeight: 600, fontSize: 12 }}>{e.statut}</span></td>
                       <td style={td}>
-                        {e.statut === 'En attente' && (
+                        {(e.statut === 'En attente' || e.statut === 'Reste a regler') && (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            <button onClick={() => handlePayer(getId(e))} style={btnStyle('#2e7d32', true)}>Payer</button>
+                            <button onClick={() => handlePayer(getId(e))} style={btnStyle('#2e7d32', true)}>{e.statut === 'Reste a regler' ? 'Solder' : 'Payer'}</button>
                             <button onClick={() => setShowPartiel(showPartiel === getId(e) ? null : getId(e))} style={btnStyle('#ff9800', true)}>Partiel</button>
                             {showPartiel === getId(e) && (
                               <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-                                <input
-                                  type="text"
-                                  placeholder="Montant"
-                                  value={montantPartiel}
-                                  onChange={ev => {
-                                    const chiffres = ev.target.value.replace(/\s/g, '').replace(/[^0-9]/g, '');
-                                    setMontantPartiel(chiffres ? chiffres.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') : '');
-                                  }}
-                                  style={{ ...inputStyle, width: 100, padding: '4px 8px', fontSize: 12 }}
-                                />
-                                <button onClick={() => handlePaiementPartiel(getId(e))} style={btnStyle('#2e7d32', true)}>OK</button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {e.statut === 'Reste a regler' && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            <button onClick={() => handlePayer(getId(e))} style={btnStyle('#2e7d32', true)}>Solder</button>
-                            <button onClick={() => setShowPartiel(showPartiel === getId(e) ? null : getId(e))} style={btnStyle('#ff9800', true)}>Partiel</button>
-                            {showPartiel === getId(e) && (
-                              <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-                                <input
-                                  type="text"
-                                  placeholder="Montant"
-                                  value={montantPartiel}
-                                  onChange={ev => {
-                                    const chiffres = ev.target.value.replace(/\s/g, '').replace(/[^0-9]/g, '');
-                                    setMontantPartiel(chiffres ? chiffres.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') : '');
-                                  }}
-                                  style={{ ...inputStyle, width: 100, padding: '4px 8px', fontSize: 12 }}
-                                />
+                                <input type="text" placeholder="Montant" value={montantPartiel}
+                                  onChange={ev => { const c = ev.target.value.replace(/\s/g, '').replace(/[^0-9]/g, ''); setMontantPartiel(c ? c.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') : ''); }}
+                                  style={{ ...inputStyle, width: 100, padding: '4px 8px', fontSize: 12 }} />
                                 <button onClick={() => handlePaiementPartiel(getId(e))} style={btnStyle('#2e7d32', true)}>OK</button>
                               </div>
                             )}
@@ -489,21 +519,34 @@ export default function Facturation() {
         </div>
       </div>
 
-      <div style={{ marginTop: '2rem', background: '#162436', borderRadius: 14, padding: '1.5rem', border: '1px solid rgba(255,255,255,0.07)' }}>
-        <h3 style={{ margin: '0 0 1rem', color: '#e8f0fe' }}>Liste des factures</h3>
+      {/* LISTE FACTURES EN COURS */}
+      <div style={{ marginTop: '2rem', background: '#162436', borderRadius: 14, padding: '1.5rem', border: '1px solid rgba(255,152,0,0.2)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: 10 }}>
+          <h3 style={{ margin: 0, color: '#ff9800' }}>🔄 Factures en cours ({filteredEnCours.length})</h3>
+          <div style={{ color: '#ff9800', fontWeight: 700 }}>Total : {formatMontant(totalEnCours)} FCFA</div>
+        </div>
+        {/* Filtres */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: '1rem', flexWrap: 'wrap' }}>
+          <input placeholder="🔍 Numero" value={filtreEncours.numero} onChange={e => setFiltreEncours(f => ({ ...f, numero: e.target.value }))} style={{ ...filtreStyle, width: 130 }} />
+          <input placeholder="🔍 Client" value={filtreEncours.client} onChange={e => setFiltreEncours(f => ({ ...f, client: e.target.value }))} style={{ ...filtreStyle, width: 160 }} />
+          <input placeholder="🔍 Designation" value={filtreEncours.designation} onChange={e => setFiltreEncours(f => ({ ...f, designation: e.target.value }))} style={{ ...filtreStyle, width: 160 }} />
+          <select value={filtreEncours.statut} onChange={e => setFiltreEncours(f => ({ ...f, statut: e.target.value }))} style={{ ...filtreStyle, width: 140 }}>
+            <option value="">Tous statuts</option>
+            <option value="En attente">En attente</option>
+            <option value="Partiel">Partiel</option>
+          </select>
+          <button onClick={() => setFiltreEncours({ client: '', numero: '', designation: '', statut: '' })} style={{ ...btnStyle('#333', true) }}>Réinitialiser</button>
+        </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ color: '#8ba3c1' }}>
-              <th style={th}>Numero</th>
-              <th style={th}>Client</th>
-              <th style={th}>Designation</th>
-              <th style={th}>Total</th>
-              <th style={th}>Statut</th>
-              <th style={th}>Action</th>
+              <th style={th}>Numero</th><th style={th}>Client</th><th style={th}>Designation</th><th style={th}>Total</th><th style={th}>Statut</th><th style={th}>Action</th>
             </tr>
           </thead>
           <tbody>
-            {factures.map(f => (
+            {filteredEnCours.length === 0 ? (
+              <tr><td colSpan={6} style={{ ...td, textAlign: 'center', color: '#8ba3c1' }}>Aucune facture en cours</td></tr>
+            ) : filteredEnCours.map(f => (
               <tr key={getId(f)} style={{ cursor: 'pointer' }}>
                 <td style={{ ...td, color: '#2979ff' }} onClick={() => handleSelect(f)}>{f.numero}</td>
                 <td style={td} onClick={() => handleSelect(f)}>{f.client_nom}</td>
@@ -516,12 +559,49 @@ export default function Facturation() {
           </tbody>
         </table>
       </div>
+
+      {/* LISTE FACTURES SOLDÉES */}
+      <div style={{ marginTop: '2rem', background: '#162436', borderRadius: 14, padding: '1.5rem', border: '1px solid rgba(0,230,118,0.2)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: 10 }}>
+          <h3 style={{ margin: 0, color: '#00e676' }}>✅ Factures soldées ({filteredSoldees.length})</h3>
+          <div style={{ color: '#00e676', fontWeight: 700 }}>Total : {formatMontant(totalSoldees)} FCFA</div>
+        </div>
+        {/* Filtres */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: '1rem', flexWrap: 'wrap' }}>
+          <input placeholder="🔍 Numero" value={filtreSoldees.numero} onChange={e => setFiltreSoldees(f => ({ ...f, numero: e.target.value }))} style={{ ...filtreStyle, width: 130 }} />
+          <input placeholder="🔍 Client" value={filtreSoldees.client} onChange={e => setFiltreSoldees(f => ({ ...f, client: e.target.value }))} style={{ ...filtreStyle, width: 160 }} />
+          <input placeholder="🔍 Designation" value={filtreSoldees.designation} onChange={e => setFiltreSoldees(f => ({ ...f, designation: e.target.value }))} style={{ ...filtreStyle, width: 160 }} />
+          <button onClick={() => setFiltreSoldees({ client: '', numero: '', designation: '' })} style={{ ...btnStyle('#333', true) }}>Réinitialiser</button>
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ color: '#8ba3c1' }}>
+              <th style={th}>Numero</th><th style={th}>Client</th><th style={th}>Designation</th><th style={th}>Total</th><th style={th}>Statut</th><th style={th}>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredSoldees.length === 0 ? (
+              <tr><td colSpan={6} style={{ ...td, textAlign: 'center', color: '#8ba3c1' }}>Aucune facture soldée</td></tr>
+            ) : filteredSoldees.map(f => (
+              <tr key={getId(f)} style={{ cursor: 'pointer' }}>
+                <td style={{ ...td, color: '#2979ff' }} onClick={() => handleSelect(f)}>{f.numero}</td>
+                <td style={td} onClick={() => handleSelect(f)}>{f.client_nom}</td>
+                <td style={td} onClick={() => handleSelect(f)}>{f.designation}</td>
+                <td style={td} onClick={() => handleSelect(f)}>{formatMontant(f.total)} FCFA</td>
+                <td style={td} onClick={() => handleSelect(f)}><BadgeStatut statut={f.statut} /></td>
+                <td style={td}><button onClick={() => handleEditFacture(f)} style={btnStyle('#00e676', true)}>Voir</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
 
 const labelStyle = { display: 'block', color: '#8ba3c1', fontSize: 12, marginTop: 10, marginBottom: 4 };
 const inputStyle = { width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: '#0d1b2a', color: '#e8f0fe', fontSize: 14, boxSizing: 'border-box', outline: 'none' };
+const filtreStyle = { padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: '#0d1b2a', color: '#e8f0fe', fontSize: 12, outline: 'none' };
 const th = { padding: '8px 12px', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.07)' };
 const td = { padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.05)', color: '#e8f0fe' };
-const btnStyle = (bg, small) => ({ background: bg, color: '#fff', border: 'none', borderRadius: 8, padding: small ? '5px 12px' : '9px 20px', cursor: 'pointer', fontWeight: 600, fontSize: small ? 12 : 14 });
+const btnStyle = (bg, small) => ({ background: bg, color: bg === '#00e676' ? '#0d1b2a' : '#fff', border: 'none', borderRadius: 8, padding: small ? '5px 12px' : '9px 20px', cursor: 'pointer', fontWeight: 600, fontSize: small ? 12 : 14 });
