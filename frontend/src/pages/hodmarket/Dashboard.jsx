@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getFactures, getCaisse, getClients, getFacture } from '../../services/api';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import StatCard from '../../components/StatCard';
 import BadgeStatut from '../../components/BadgeStatut';
 import axios from 'axios';
@@ -23,11 +23,15 @@ export default function Dashboard() {
   const [relanceEnCours, setRelanceEnCours] = useState({});
   const [relanceOk, setRelanceOk] = useState({});
 
+  const getToken = () => {
+    return localStorage.getItem('token') || localStorage.getItem('jwt') || sessionStorage.getItem('token') || '';
+  };
+
   const envoyerRelance = async (e) => {
     const key = e.numero_ech;
     setRelanceEnCours(prev => ({ ...prev, [key]: true }));
     try {
-      const token = localStorage.getItem('token');
+      const token = getToken();
       await axios.post(
         `${process.env.REACT_APP_API_URL}/api/factures/relance`,
         {
