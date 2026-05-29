@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { getFactures, getCaisse, getClients, getFacture } from '../../services/api';
+import { getFactures, getCaisse, getClients, getFacture, envoyerRelanceAPI } from '../../services/api';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import StatCard from '../../components/StatCard';
 import BadgeStatut from '../../components/BadgeStatut';
-import axios from 'axios';
 
 function fmt(m) { return Math.round(m || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
 
@@ -23,26 +22,17 @@ export default function Dashboard() {
   const [relanceEnCours, setRelanceEnCours] = useState({});
   const [relanceOk, setRelanceOk] = useState({});
 
-  const getToken = () => {
-    return localStorage.getItem('token') || localStorage.getItem('jwt') || sessionStorage.getItem('token') || '';
-  };
-
   const envoyerRelance = async (e) => {
     const key = e.numero_ech;
     setRelanceEnCours(prev => ({ ...prev, [key]: true }));
     try {
-      const token = getToken();
-      await axios.post(
-        `${process.env.REACT_APP_API_URL}/api/factures/relance`,
-        {
-          client_nom: e.client_nom,
-          telephone: e.telephone,
-          numero_ech: e.numero_ech,
-          montant: e.montant,
-          date_echeance: e.date_echeance,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await envoyerRelanceAPI({
+        client_nom: e.client_nom,
+        telephone: e.telephone,
+        numero_ech: e.numero_ech,
+        montant: e.montant,
+        date_echeance: e.date_echeance,
+      });
       setRelanceOk(prev => ({ ...prev, [key]: true }));
       setTimeout(() => setRelanceOk(prev => ({ ...prev, [key]: false })), 3000);
     } catch (err) {

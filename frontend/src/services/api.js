@@ -4,14 +4,12 @@ const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 const API = axios.create({ baseURL: `${BASE_URL}/api` });
 
-// Ajouter le token automatiquement
 API.interceptors.request.use((config) => {
   const token = localStorage.getItem('hod_token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-// Déconnexion automatique si token expiré
 API.interceptors.response.use(
   response => response,
   error => {
@@ -39,6 +37,7 @@ export const marquerPaye = (echId) => API.put(`/factures/echeances/${echId}/paye
 export const annulerPaiement = (echId) => API.put(`/factures/echeances/${echId}/annuler`);
 export const appliquerPenalite = (id) => API.post(`/factures/${id}/penalite`);
 export const paiementPartiel = (echId, d) => API.put(`/factures/echeances/${echId}/partiel`, d);
+export const envoyerRelanceAPI = (d) => API.post('/factures/relance', d);
 
 export const getCaisse = () => API.get('/caisse');
 export const addOperation = (d) => API.post('/caisse', d);
@@ -51,7 +50,6 @@ export const uploadDocument = (clientId, formData) => API.post(`/documents/${cli
 export const supprimerDocument = (clientId, fichier) => API.delete(`/documents/${clientId}/documents/${fichier}`);
 export const getUrlDocument = (clientId, fichier) => `${BASE_URL}/api/documents/${clientId}/documents/${fichier}`;
 
-// HOD LOGISTIC
 export const getLogisticRecettes = () => API.get('/logistic/recettes');
 export const addLogisticRecette = (d) => API.post('/logistic/recettes', d);
 export const deleteLogisticRecette = (id) => API.delete(`/logistic/recettes/${id}`);
@@ -61,7 +59,6 @@ export const deleteLogisticCharge = (id) => API.delete(`/logistic/charges/${id}`
 export const getLogisticCaisse = () => API.get('/logistic/caisse');
 export const getLogisticDashboard = () => API.get('/logistic/dashboard');
 
-// HOD CONSTRUCTION
 export const getConstructionParams = () => API.get('/construction/parametres');
 export const saveConstructionParams = (d) => API.put('/construction/parametres', d);
 export const getConstructionRecettes = () => API.get('/construction/recettes');
