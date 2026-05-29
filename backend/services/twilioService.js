@@ -45,4 +45,13 @@ async function rappelJourJ(client_nom, telephone, numero_ech, montant) {
 async function rappelRetard(client_nom, telephone, numero_ech, montant, jours_retard) {
   const msg = `🚨 *Échéance dépassée - HOD Groupe*\n\nBonjour ${client_nom},\nVotre échéance *${numero_ech}* de *${montant} FCFA* est en retard de *${jours_retard} jours*.\n\nMerci de régulariser votre situation rapidement.`;
   return sendWhatsApp(telephone, msg);
-  
+}
+
+module.exports = {
+  sendWhatsApp,
+  notifFactureCreee,
+  notifPaiementRecu,
+  rappelCinqJours,
+  rappelJourJ,
+  rappelRetard,
+};
