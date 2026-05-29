@@ -1,71 +1,48 @@
-require('dotenv').config();
 const twilio = require('twilio');
 
-const ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
-const AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
-const FROM = process.env.TWILIO_FROM || 'whatsapp:+14155238886';
+const client = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
+);
 
-const client = twilio(ACCOUNT_SID, AUTH_TOKEN);
+const FROM = 'whatsapp:+15559665541';
 
-function formatMontant(montant) {
-  return Math.round(montant || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-}
-
-function envoyerWhatsApp(telephoneClient, message) {
-  if (!telephoneClient) return;
-  if (!ACCOUNT_SID || !AUTH_TOKEN) {
-    console.log('Twilio non configure - message non envoye');
-    return;
-  }
-
-  let numero = telephoneClient.replace(/\s/g, '').replace(/\./g, '').replace(/-/g, '');
-  if (numero.startsWith('00')) {
-    numero = numero.substring(2);
-  } else if (numero.startsWith('+')) {
-    numero = numero.substring(1);
-  } else if (numero.startsWith('0')) {
-    numero = '242' + numero.substring(1);
-  } else if (!numero.startsWith('242') && numero.length <= 9) {
-    numero = '242' + numero;
-  }
-
-  const to = 'whatsapp:+' + numero;
-  console.log('Envoi WhatsApp vers:', to);
-
-  return client.messages.create({
-    from: FROM,
-    to: to,
-    body: message
-  }).then(msg => {
-    console.log('WhatsApp envoye SID:' + msg.sid);
+async function sendWhatsApp(to, message) {
+  try {
+    const msg = await client.messages.create({
+      from: FROM,
+      to: `whatsapp:${to}`,
+      body: message,
+    });
+    console.log('WhatsApp envoyé:', msg.sid);
     return msg;
-  }).catch(err => {
-    console.error('Erreur WhatsApp:', err.message);
-  });
+  } catch (err) {
+    console.error('Erreur Twilio:', err.message);
+    throw err;
+  }
 }
 
-function notifFactureCreee(nomClient, telephone, numeroFacture, total, mensualite, duree) {
-  if (!telephone) return;
-  const message = 'HOD-MARKET - Nouvelle Facture\n\nBonjour ' + nomClient + ',\n\nVotre commande a ete enregistree.\n\nFacture : ' + numeroFacture + '\nTotal : ' + total + ' FCFA\nDuree : ' + duree + ' mois\nMensualite : ' + mensualite + ' FCFA\n\nMerci !\nHOD-MARKET';
-  return envoyerWhatsApp(telephone, message);
+async function notifFactureCreee(client_nom, telephone, numero, total, montant_echeance, duree) {
+  const msg = `📄 *Nouvelle facture - HOD Groupe*\n\nBonjour ${client_nom},\nVotre facture *${numero}* d'un montant de *${total} FCFA* a été créée.\nEchéances : *${duree} x ${montant_echeance} FCFA*\n\nMerci de votre confiance.`;
+  return sendWhatsApp(telephone, msg);
 }
 
-function notifPaiementRecu(nomClient, telephone, numeroFacture, numeroEch, montant, dateEch) {
-  if (!telephone) return;
-  const message = 'HOD-MARKET - Paiement Recu\n\nBonjour ' + nomClient + ',\n\nPaiement enregistre.\n\nFacture : ' + numeroFacture + '\nEcheance : ' + numeroEch + '\nMontant : ' + montant + ' FCFA\nDate : ' + dateEch + '\n\nMerci !\nHOD-MARKET';
-  return envoyerWhatsApp(telephone, message);
+async function notifPaiementRecu(client_nom, telephone, numero, numero_ech, montant, date_paiement) {
+  const msg = `✅ *Paiement enregistré - HOD Groupe*\n\nBonjour ${client_nom},\nVotre paiement de *${montant} FCFA* sur l'échéance *${numero_ech}* de la facture *${numero}* a bien été comptabilisé le ${date_paiement}.\n\nMerci !`;
+  return sendWhatsApp(telephone, msg);
 }
 
-function notifRappelEcheance(nomClient, telephone, numeroFacture, numeroEch, montant, dateEch) {
-  if (!telephone) return;
-  const message = 'HOD-MARKET - Rappel\n\nBonjour ' + nomClient + ',\n\nEcheance dans 5 jours.\n\nFacture : ' + numeroFacture + '\nEcheance : ' + numeroEch + '\nMontant : ' + montant + ' FCFA\nDate : ' + dateEch + '\n\nMerci !\nHOD-MARKET';
-  return envoyerWhatsApp(telephone, message);
+async function rappelCinqJours(client_nom, telephone, numero_ech, montant, date_echeance) {
+  const msg = `⏰ *Rappel échéance - HOD Groupe*\n\nBonjour ${client_nom},\nVotre échéance *${numero_ech}* de *${montant} FCFA* arrive dans *5 jours* (${date_echeance}).\n\nMerci de prévoir le règlement.`;
+  return sendWhatsApp(telephone, msg);
 }
 
-function notifRetard(nomClient, telephone, numeroFacture, numeroEch, montant, dateEch) {
-  if (!telephone) return;
-  const message = 'HOD-MARKET - Retard\n\nBonjour ' + nomClient + ',\n\nEcheance en retard.\n\nFacture : ' + numeroFacture + '\nEcheance : ' + numeroEch + '\nMontant : ' + montant + ' FCFA\nDate : ' + dateEch + '\n\nMerci de regulariser.\nHOD-MARKET';
-  return envoyerWhatsApp(telephone, message);
+async function rappelJourJ(client_nom, telephone, numero_ech, montant) {
+  const msg = `🔔 *Échéance aujourd'hui - HOD Groupe*\n\nBonjour ${client_nom},\nVotre échéance *${numero_ech}* de *${montant} FCFA* est due *aujourd'hui*.\n\nContactez-nous pour tout renseignement.`;
+  return sendWhatsApp(telephone, msg);
 }
 
-module.exports = { notifFactureCreee, notifPaiementRecu, notifRappelEcheance, notifRetard };
+async function rappelRetard(client_nom, telephone, numero_ech, montant, jours_retard) {
+  const msg = `🚨 *Échéance dépassée - HOD Groupe*\n\nBonjour ${client_nom},\nVotre échéance *${numero_ech}* de *${montant} FCFA* est en retard de *${jours_retard} jours*.\n\nMerci de régulariser votre situation rapidement.`;
+  return sendWhatsApp(telephone, msg);
+  

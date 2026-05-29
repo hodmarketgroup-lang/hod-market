@@ -3,6 +3,7 @@ import { getFactures, getCaisse, getClients, getFacture } from '../../services/a
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, Legend } from 'recharts';
 import StatCard from '../../components/StatCard';
 import BadgeStatut from '../../components/BadgeStatut';
+import axios from 'axios';
 
 function fmt(m) { return Math.round(m || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
 
@@ -19,6 +20,33 @@ export default function Dashboard() {
   const [allFactures, setAllFactures] = useState([]);
   const [allCaisse, setAllCaisse] = useState([]);
   const [previsions, setPrevisions] = useState([]);
+  const [relanceEnCours, setRelanceEnCours] = useState({});
+  const [relanceOk, setRelanceOk] = useState({});
+
+  const envoyerRelance = async (e) => {
+    const key = e.numero_ech;
+    setRelanceEnCours(prev => ({ ...prev, [key]: true }));
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(
+        `${process.env.REACT_APP_API_URL}/api/factures/relance`,
+        {
+          client_nom: e.client_nom,
+          telephone: e.telephone,
+          numero_ech: e.numero_ech,
+          montant: e.montant,
+          date_echeance: e.date_echeance,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setRelanceOk(prev => ({ ...prev, [key]: true }));
+      setTimeout(() => setRelanceOk(prev => ({ ...prev, [key]: false })), 3000);
+    } catch (err) {
+      alert('Erreur lors de l\'envoi de la relance');
+    } finally {
+      setRelanceEnCours(prev => ({ ...prev, [key]: false }));
+    }
+  };
 
   useEffect(() => {
     Promise.all([getFactures(), getCaisse(), getClients()]).then(([f, c, cl]) => {
@@ -33,18 +61,21 @@ export default function Dashboard() {
         const facDetail = details.map(d => d.data);
         setAllFactures(facDetail);
 
-        const echeances = facDetail.flatMap(d => (d.echeances || []).map(e => ({ ...e, client_nom: d.client_nom, numero: d.numero })));
+        const echeances = facDetail.flatMap(d => (d.echeances || []).map(e => ({
+          ...e,
+          client_nom: d.client_nom,
+          telephone: d.telephone,
+          numero: d.numero
+        })));
 
         setAlertes({
           retard: echeances.filter(e => e.statut === 'En attente' && e.date_echeance < today),
           bientot: echeances.filter(e => e.statut === 'En attente' && e.date_echeance >= today && e.date_echeance <= j5str)
         });
 
-        // Calcul previsions encaissement jusqu'en fin d'annee
         const anneeEnCours = new Date().getFullYear();
-        const moisEnCours = new Date().getMonth(); // 0-11
+        const moisEnCours = new Date().getMonth();
         const previsionsData = [];
-
         for (let m = moisEnCours; m < 12; m++) {
           const moisStr = String(anneeEnCours) + '-' + String(m + 1).padStart(2, '0');
           const echeancesMois = echeances.filter(e => {
@@ -53,17 +84,8 @@ export default function Dashboard() {
             return moisEch === moisStr && (e.statut === 'En attente' || e.statut === 'Reste a regler');
           });
           const montantPrev = echeancesMois.reduce((s, e) => s + (e.montant || 0), 0);
-          const nbEch = echeancesMois.length;
-
-          previsionsData.push({
-            mois: MOIS_COURTS[m],
-            moisNum: m + 1,
-            montant: montantPrev,
-            nb: nbEch,
-            echeances: echeancesMois
-          });
+          previsionsData.push({ mois: MOIS_COURTS[m], moisNum: m + 1, montant: montantPrev, nb: echeancesMois.length, echeances: echeancesMois });
         }
-
         setPrevisions(previsionsData);
       });
     });
@@ -77,7 +99,6 @@ export default function Dashboard() {
       if (mois !== 'Tout' && Number(m) !== MOIS.indexOf(mois)) return false;
       return true;
     };
-
     const facFiltrees = allFactures.filter(f => filtrerDate(f.date_facture));
     const margeCommerciale = facFiltrees.reduce((s, f) => s + (f.marge || 0) + (f.frais_dossier || 0) - (f.remise || 0), 0);
     const caisseFiltree = allCaisse.filter(j => j.type === 'Sortie' && !j.facture_id && filtrerDate(j.date));
@@ -130,7 +151,7 @@ export default function Dashboard() {
         <StatCard label="Factures soldees" value={soldees} sub={'sur ' + stats.factures.length} color="#2979ff" />
       </div>
 
-      {/* PREVISIONS ENCAISSEMENT */}
+      {/* PREVISIONS */}
       <div style={{ background: '#162436', borderRadius: 14, padding: '1.5rem', border: '1px solid rgba(46,204,113,0.2)', marginBottom: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: '1.5rem' }}>
           <div>
@@ -142,25 +163,15 @@ export default function Dashboard() {
             <div style={{ color: '#2ecc71', fontWeight: 700, fontSize: 20 }}>{fmt(totalPrevisions)} FCFA</div>
           </div>
         </div>
-
-        {/* Cartes par mois */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: '1.5rem' }}>
           {previsions.map(p => (
-            <div key={p.mois} style={{
-              flex: '1 1 80px', minWidth: 80, background: p.montant > 0 ? '#0d1b2a' : '#0a1525',
-              borderRadius: 10, padding: '10px 12px', textAlign: 'center',
-              border: p.montant > 0 ? '1px solid rgba(46,204,113,0.3)' : '1px solid rgba(255,255,255,0.05)'
-            }}>
+            <div key={p.mois} style={{ flex: '1 1 80px', minWidth: 80, background: p.montant > 0 ? '#0d1b2a' : '#0a1525', borderRadius: 10, padding: '10px 12px', textAlign: 'center', border: p.montant > 0 ? '1px solid rgba(46,204,113,0.3)' : '1px solid rgba(255,255,255,0.05)' }}>
               <div style={{ color: '#8ba3c1', fontSize: 11, marginBottom: 4 }}>{p.mois}</div>
-              <div style={{ color: p.montant > 0 ? '#2ecc71' : '#8ba3c1', fontWeight: 700, fontSize: 14 }}>
-                {p.montant > 0 ? fmt(p.montant) : '—'}
-              </div>
+              <div style={{ color: p.montant > 0 ? '#2ecc71' : '#8ba3c1', fontWeight: 700, fontSize: 14 }}>{p.montant > 0 ? fmt(p.montant) : '—'}</div>
               {p.montant > 0 && <div style={{ color: '#8ba3c1', fontSize: 10, marginTop: 2 }}>{p.nb} éch.</div>}
             </div>
           ))}
         </div>
-
-        {/* Graphique */}
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={previsions} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
             <XAxis dataKey="mois" tick={{ fill: '#8ba3c1', fontSize: 11 }} />
@@ -184,7 +195,6 @@ export default function Dashboard() {
             </select>
           </div>
         </div>
-
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: '1.5rem' }}>
           <div style={{ flex: 1, minWidth: 160, background: '#0d1b2a', borderRadius: 12, padding: '1rem 1.5rem', border: '1px solid rgba(41,121,255,0.3)' }}>
             <div style={{ color: '#8ba3c1', fontSize: 12, marginBottom: 6 }}>Marge commerciale</div>
@@ -205,7 +215,6 @@ export default function Dashboard() {
             <div style={{ color: '#8ba3c1', fontSize: 10, marginTop: 4 }}>Marge commerciale - Depenses</div>
           </div>
         </div>
-
         <h3 style={{ margin: '0 0 1rem', color: '#e8f0fe', fontSize: 14 }}>Evolution mensuelle (12 derniers mois)</h3>
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={graphMois()}>
@@ -219,16 +228,40 @@ export default function Dashboard() {
       </div>
 
       <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+
+        {/* EN RETARD */}
         <div style={{ flex: 1, minWidth: 280, background: '#162436', borderRadius: 14, padding: '1.5rem', border: '1px solid rgba(255,255,255,0.07)' }}>
           <h3 style={{ color: '#ff5252', margin: '0 0 1rem' }}>🔴 En retard ({alertes.retard.length})</h3>
           {alertes.retard.length === 0 ? <p style={{ color: '#8ba3c1' }}>Aucun retard</p> : alertes.retard.map((e, i) => (
             <div key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '8px 0' }}>
-              <div style={{ color: '#e8f0fe', fontSize: 13 }}>{e.client_nom} — {e.numero_ech} — {fmt(e.montant)} FCFA</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <div style={{ color: '#e8f0fe', fontSize: 13 }}>{e.client_nom} — {e.numero_ech} — {fmt(e.montant)} FCFA</div>
+                <button
+                  onClick={() => envoyerRelance(e)}
+                  disabled={relanceEnCours[e.numero_ech]}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                    border: 'none',
+                    background: relanceOk[e.numero_ech] ? '#00e676' : '#ff5252',
+                    color: '#fff',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: relanceEnCours[e.numero_ech] ? 'not-allowed' : 'pointer',
+                    opacity: relanceEnCours[e.numero_ech] ? 0.6 : 1,
+                    whiteSpace: 'nowrap',
+                    transition: 'background 0.3s'
+                  }}
+                >
+                  {relanceOk[e.numero_ech] ? '✓ Envoyé' : relanceEnCours[e.numero_ech] ? '...' : '📲 Relance'}
+                </button>
+              </div>
               <div style={{ color: '#ff5252', fontSize: 12 }}>Echeance : {e.date_echeance}</div>
             </div>
           ))}
         </div>
 
+        {/* DANS 5 JOURS */}
         <div style={{ flex: 1, minWidth: 280, background: '#162436', borderRadius: 14, padding: '1.5rem', border: '1px solid rgba(255,255,255,0.07)' }}>
           <h3 style={{ color: '#ff9800', margin: '0 0 1rem' }}>🟡 Dans 5 jours ({alertes.bientot.length})</h3>
           {alertes.bientot.length === 0 ? <p style={{ color: '#8ba3c1' }}>Aucune echeance proche</p> : alertes.bientot.map((e, i) => (
@@ -239,6 +272,7 @@ export default function Dashboard() {
           ))}
         </div>
 
+        {/* DERNIERES FACTURES */}
         <div style={{ flex: 1, minWidth: 280, background: '#162436', borderRadius: 14, padding: '1.5rem', border: '1px solid rgba(255,255,255,0.07)' }}>
           <h3 style={{ color: '#e8f0fe', margin: '0 0 1rem' }}>📋 Dernieres factures</h3>
           {stats.factures.slice(0, 5).map((f, i) => (

@@ -4,7 +4,7 @@ const Caisse = require('../models/Caisse');
 const Parametres = require('../models/Parametres');
 const { calculerEcheancier } = require('../services/calcEcheancier');
 const { getTauxParDuree } = require('../services/calcTaux');
-const { notifFactureCreee, notifPaiementRecu } = require('../services/twilioService');
+const { notifFactureCreee, notifPaiementRecu, rappelRetard } = require('../services/twilioService');
 
 function genNumero(count) {
   const now = new Date();
@@ -277,4 +277,19 @@ const penalite = async (req, res) => {
   }
 };
 
-module.exports = { getAll, getOne, create, update, marquerPaye, paiementPartiel, annulerPaiement, penalite };
+const envoyerRelance = async (req, res) => {
+  try {
+    const { client_nom, telephone, numero_ech, montant, date_echeance } = req.body;
+    if (!telephone) return res.status(400).json({ error: 'Numéro de téléphone manquant' });
+    const aujourd_hui = new Date();
+    aujourd_hui.setHours(0, 0, 0, 0);
+    const dateEch = new Date(date_echeance);
+    const diffJours = Math.floor((aujourd_hui - dateEch) / (1000 * 60 * 60 * 24));
+    await rappelRetard(client_nom, telephone, numero_ech, montant, diffJours);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+module.exports = { getAll, getOne, create, update, marquerPaye, paiementPartiel, annulerPaiement, penalite, envoyerRelance };

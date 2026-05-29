@@ -7,7 +7,7 @@ require('dotenv').config();
 
 const initDB = require('./db/init');
 const errorHandler = require('./middleware/errorHandler');
-const { verifierRappels } = require('./services/rappels');
+const { demarrerCronRappels } = require('./services/rappels');
 
 const app = express();
 initDB();
@@ -25,10 +25,8 @@ app.use(express.json());
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Routes publiques
 app.use('/api/auth', require('./routes/auth'));
 
-// Routes protégées
 const { auth } = require('./middleware/auth');
 app.use('/api/clients',      auth, require('./routes/clients'));
 app.use('/api/factures',     auth, require('./routes/factures'));
@@ -43,14 +41,6 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log('Serveur HOD-MARKET démarré sur le port ' + PORT);
-  verifierRappels();
-  const maintenant = new Date();
-  const heure8h = new Date();
-  heure8h.setHours(8, 0, 0, 0);
-  if (maintenant > heure8h) heure8h.setDate(heure8h.getDate() + 1);
-  setTimeout(() => {
-    verifierRappels();
-    setInterval(verifierRappels, 24 * 60 * 60 * 1000);
-  }, heure8h - maintenant);
-  console.log('Rappels automatiques programmés chaque jour à 8h00');
+  demarrerCronRappels();
+  console.log('Rappels automatiques programmés chaque jour à 9h00');
 });
