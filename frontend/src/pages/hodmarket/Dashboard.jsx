@@ -22,8 +22,10 @@ export default function Dashboard() {
   const [relanceEnCours, setRelanceEnCours] = useState({});
   const [relanceOk, setRelanceOk] = useState({});
 
+  const getKey = (e) => `${e.numero}_${e.numero_ech}`;
+
   const envoyerRelance = async (e) => {
-    const key = e.numero_ech;
+    const key = getKey(e);
     setRelanceEnCours(prev => ({ ...prev, [key]: true }));
     try {
       await envoyerRelanceAPI({
@@ -226,33 +228,36 @@ export default function Dashboard() {
         {/* EN RETARD */}
         <div style={{ flex: 1, minWidth: 280, background: '#162436', borderRadius: 14, padding: '1.5rem', border: '1px solid rgba(255,255,255,0.07)' }}>
           <h3 style={{ color: '#ff5252', margin: '0 0 1rem' }}>🔴 En retard ({alertes.retard.length})</h3>
-          {alertes.retard.length === 0 ? <p style={{ color: '#8ba3c1' }}>Aucun retard</p> : alertes.retard.map((e, i) => (
-            <div key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '8px 0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <div style={{ color: '#e8f0fe', fontSize: 13 }}>{e.client_nom} — {e.numero_ech} — {fmt(e.montant)} FCFA</div>
-                <button
-                  onClick={() => envoyerRelance(e)}
-                  disabled={relanceEnCours[e.numero_ech]}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: 6,
-                    border: 'none',
-                    background: relanceOk[e.numero_ech] ? '#00e676' : '#ff5252',
-                    color: '#fff',
-                    fontSize: 11,
-                    fontWeight: 600,
-                    cursor: relanceEnCours[e.numero_ech] ? 'not-allowed' : 'pointer',
-                    opacity: relanceEnCours[e.numero_ech] ? 0.6 : 1,
-                    whiteSpace: 'nowrap',
-                    transition: 'background 0.3s'
-                  }}
-                >
-                  {relanceOk[e.numero_ech] ? '✓ Envoyé' : relanceEnCours[e.numero_ech] ? '...' : '📲 Relance'}
-                </button>
+          {alertes.retard.length === 0 ? <p style={{ color: '#8ba3c1' }}>Aucun retard</p> : alertes.retard.map((e, i) => {
+            const key = getKey(e);
+            return (
+              <div key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '8px 0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <div style={{ color: '#e8f0fe', fontSize: 13 }}>{e.client_nom} — {e.numero_ech} — {fmt(e.montant)} FCFA</div>
+                  <button
+                    onClick={() => envoyerRelance(e)}
+                    disabled={relanceEnCours[key]}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: 6,
+                      border: 'none',
+                      background: relanceOk[key] ? '#00e676' : '#ff5252',
+                      color: '#fff',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      cursor: relanceEnCours[key] ? 'not-allowed' : 'pointer',
+                      opacity: relanceEnCours[key] ? 0.6 : 1,
+                      whiteSpace: 'nowrap',
+                      transition: 'background 0.3s'
+                    }}
+                  >
+                    {relanceOk[key] ? '✓ Envoyé' : relanceEnCours[key] ? '...' : '📲 Relance'}
+                  </button>
+                </div>
+                <div style={{ color: '#ff5252', fontSize: 12 }}>Echeance : {e.date_echeance}</div>
               </div>
-              <div style={{ color: '#ff5252', fontSize: 12 }}>Echeance : {e.date_echeance}</div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* DANS 5 JOURS */}
