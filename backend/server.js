@@ -14,7 +14,7 @@ initDB();
 
 app.use(cors({
   origin: [
-    'https://hod-marketgroup.netlify.app',
+    'https://hod-market.vercel.app',
     'http://localhost:3000'
   ],
   credentials: true
