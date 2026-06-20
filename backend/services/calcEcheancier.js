@@ -8,10 +8,9 @@ function calculerEcheancier(data, params) {
   const { montant_commande, duree, taux, acompte = 0, depot_garantie = 0, remise = 0, date_facture } = data;
 
   const frais_dossier_pct = params.frais_dossier_pct || 1;
-  const marge_brute = montant_commande * (taux / 100);
-  const marge = marge_brute - Number(remise);
+  const marge = montant_commande * (taux / 100);
   const frais_dossier = montant_commande * (frais_dossier_pct / 100);
-  const total = montant_commande + marge + frais_dossier + Number(depot_garantie) - Number(acompte);
+  const total = montant_commande + marge + frais_dossier - Number(remise) + Number(depot_garantie) - Number(acompte);
   const mensualite = Math.round(total / duree);
 
   const echeances = [];

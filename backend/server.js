@@ -35,6 +35,7 @@ app.use('/api/parametres',   auth, require('./routes/parametres'));
 app.use('/api/documents',    auth, require('./routes/documents'));
 app.use('/api/logistic',     auth, require('./routes/logistic'));
 app.use('/api/construction', auth, require('./routes/construction'));
+app.use('/api/brouillons',   auth, require('./routes/brouillons'));
 
 app.use(errorHandler);
 

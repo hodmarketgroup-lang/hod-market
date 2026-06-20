@@ -39,6 +39,11 @@ export const appliquerPenalite = (id) => API.post(`/factures/${id}/penalite`);
 export const paiementPartiel = (echId, d) => API.put(`/factures/echeances/${echId}/partiel`, d);
 export const envoyerRelanceAPI = (d) => API.post('/factures/relance', d);
 
+export const getBrouillons = () => API.get('/brouillons');
+export const saveBrouillon = (d) => API.post('/brouillons', d);
+export const updateBrouillon = (id, d) => API.put(`/brouillons/${id}`, d);
+export const deleteBrouillon = (id) => API.delete(`/brouillons/${id}`);
+
 export const getCaisse = () => API.get('/caisse');
 export const addOperation = (d) => API.post('/caisse', d);
 

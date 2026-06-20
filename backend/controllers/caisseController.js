@@ -43,7 +43,7 @@ const deleteOperation = async (req, res) => {
 
     // Recalculer les soldes
     const params = await Parametres.findOne();
-    const journal = await Caisse.find().sort({ _id: 1 });
+    const journal = await Caisse.find().sort({ date: 1, _id: 1 });
     let solde = params ? params.solde_initial : 0;
     for (const j of journal) {
       solde = solde + (j.entree || 0) - (j.sortie || 0);

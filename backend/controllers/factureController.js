@@ -169,6 +169,8 @@ const marquerPaye = async (req, res) => {
     if (!facture) return res.status(404).json({ error: 'Echeance introuvable' });
 
     const ech = facture.echeances.id(req.params.echId);
+    if (ech.statut === 'Payé') return res.status(409).json({ error: 'Echeance deja payee' });
+
     const today = new Date().toISOString().split('T')[0];
     const nomClient = facture.client_id?.nom || '';
 
