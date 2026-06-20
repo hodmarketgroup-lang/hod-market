@@ -21,6 +21,7 @@ export default function Dashboard() {
   const [previsions, setPrevisions] = useState([]);
   const [relanceEnCours, setRelanceEnCours] = useState({});
   const [relanceOk, setRelanceOk] = useState({});
+  const [moisSelectionne, setMoisSelectionne] = useState(null);
 
   const getKey = (e) => `${e.numero}_${e.numero_ech}`;
 
@@ -160,22 +161,91 @@ export default function Dashboard() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-          {previsions.map(p => (
-            <div key={p.mois} style={{ flex: '1 1 80px', minWidth: 80, background: p.montant > 0 ? '#0d1b2a' : '#0a1525', borderRadius: 10, padding: '10px 12px', textAlign: 'center', border: p.montant > 0 ? '1px solid rgba(46,204,113,0.3)' : '1px solid rgba(255,255,255,0.05)' }}>
-              <div style={{ color: '#8ba3c1', fontSize: 11, marginBottom: 4 }}>{p.mois}</div>
-              <div style={{ color: p.montant > 0 ? '#2ecc71' : '#8ba3c1', fontWeight: 700, fontSize: 14 }}>{p.montant > 0 ? fmt(p.montant) : '—'}</div>
-              {p.montant > 0 && <div style={{ color: '#8ba3c1', fontSize: 10, marginTop: 2 }}>{p.nb} éch.</div>}
-            </div>
-          ))}
+          {previsions.map(p => {
+            const estSelectionne = moisSelectionne?.mois === p.mois;
+            return (
+              <div
+                key={p.mois}
+                onClick={() => p.montant > 0 && setMoisSelectionne(estSelectionne ? null : p)}
+                style={{
+                  flex: '1 1 80px', minWidth: 80, borderRadius: 10, padding: '10px 12px', textAlign: 'center',
+                  background: estSelectionne ? '#0d2a1a' : p.montant > 0 ? '#0d1b2a' : '#0a1525',
+                  border: estSelectionne ? '2px solid #2ecc71' : p.montant > 0 ? '1px solid rgba(46,204,113,0.3)' : '1px solid rgba(255,255,255,0.05)',
+                  cursor: p.montant > 0 ? 'pointer' : 'default',
+                  transition: 'border 0.15s, background 0.15s'
+                }}
+              >
+                <div style={{ color: estSelectionne ? '#2ecc71' : '#8ba3c1', fontSize: 11, marginBottom: 4 }}>{p.mois}</div>
+                <div style={{ color: p.montant > 0 ? '#2ecc71' : '#8ba3c1', fontWeight: 700, fontSize: 14 }}>{p.montant > 0 ? fmt(p.montant) : '—'}</div>
+                {p.montant > 0 && <div style={{ color: '#8ba3c1', fontSize: 10, marginTop: 2 }}>{p.nb} éch.</div>}
+              </div>
+            );
+          })}
         </div>
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={previsions} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
             <XAxis dataKey="mois" tick={{ fill: '#8ba3c1', fontSize: 11 }} />
             <YAxis tick={{ fill: '#8ba3c1', fontSize: 10 }} tickFormatter={v => fmt(v)} />
             <Tooltip content={<CustomTooltipPrev />} />
-            <Bar dataKey="montant" fill="#2ecc71" radius={[6,6,0,0]} name="Prévision" />
+            <Bar dataKey="montant" fill="#2ecc71" radius={[6,6,0,0]} name="Prévision"
+              onClick={(data) => data.montant > 0 && setMoisSelectionne(moisSelectionne?.mois === data.mois ? null : data)}
+              cursor="pointer"
+            />
           </BarChart>
         </ResponsiveContainer>
+
+        {/* DETAIL DU MOIS SELECTIONNE */}
+        {moisSelectionne && (
+          <div style={{ marginTop: '1.5rem', borderTop: '1px solid rgba(46,204,113,0.2)', paddingTop: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: 10 }}>
+              <div>
+                <span style={{ color: '#2ecc71', fontWeight: 700, fontSize: 15 }}>
+                  Détail — {moisSelectionne.mois} {new Date().getFullYear()}
+                </span>
+                <span style={{ color: '#8ba3c1', fontSize: 12, marginLeft: 12 }}>
+                  {moisSelectionne.nb} échéance(s) · Total : {fmt(moisSelectionne.montant)} FCFA
+                </span>
+              </div>
+              <button
+                onClick={() => setMoisSelectionne(null)}
+                style={{ background: 'none', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, color: '#8ba3c1', fontSize: 12, padding: '4px 12px', cursor: 'pointer' }}
+              >
+                Fermer ✕
+              </button>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ color: '#8ba3c1' }}>
+                  <th style={thS}>Client</th>
+                  <th style={thS}>Facture</th>
+                  <th style={thS}>Échéance</th>
+                  <th style={thS}>Date</th>
+                  <th style={{ ...thS, textAlign: 'right' }}>Montant</th>
+                </tr>
+              </thead>
+              <tbody>
+                {moisSelectionne.echeances
+                  .slice()
+                  .sort((a, b) => (a.date_echeance || '').localeCompare(b.date_echeance || ''))
+                  .map((e, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                      <td style={tdS}>{e.client_nom}</td>
+                      <td style={{ ...tdS, color: '#2979ff' }}>{e.numero}</td>
+                      <td style={tdS}><span style={{ color: e.statut === 'Reste a regler' ? '#ff9800' : '#e8f0fe' }}>{e.numero_ech}</span></td>
+                      <td style={tdS}>{e.date_echeance}</td>
+                      <td style={{ ...tdS, textAlign: 'right', color: '#2ecc71', fontWeight: 600 }}>{fmt(e.montant)} FCFA</td>
+                    </tr>
+                  ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={4} style={{ ...tdS, fontWeight: 700, color: '#e8f0fe', paddingTop: 10 }}>TOTAL</td>
+                  <td style={{ ...tdS, textAlign: 'right', fontWeight: 700, color: '#2ecc71', fontSize: 14, paddingTop: 10 }}>{fmt(moisSelectionne.montant)} FCFA</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* SYNTHESE */}
@@ -290,3 +360,5 @@ export default function Dashboard() {
 }
 
 const selStyle = { padding: '8px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: '#0d1b2a', color: '#e8f0fe', fontSize: 13, outline: 'none', cursor: 'pointer' };
+const thS = { padding: '7px 10px', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#8ba3c1', fontWeight: 600 };
+const tdS = { padding: '9px 10px', color: '#e8f0fe' };
