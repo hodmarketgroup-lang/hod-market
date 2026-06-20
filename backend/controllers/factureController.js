@@ -56,14 +56,14 @@ const getOne = async (req, res) => {
 const create = async (req, res) => {
   try {
     const params = await Parametres.findOne();
-    const { client_id, designation, date_facture, montant_commande, duree, acompte, depot_garantie, remise, frais_dossier_pct } = req.body;
+    const { client_id, designation, date_facture, montant_commande, duree, acompte, depot_garantie, remise, frais_dossier_pct, date_premiere_echeance } = req.body;
 
     const taux = getTauxParDuree(Number(duree), params);
     const fraisPct = Number(frais_dossier_pct) || params.frais_dossier_pct || 1;
     const paramsAvecFrais = { ...params.toObject(), frais_dossier_pct: fraisPct };
 
     const { marge, frais_dossier, total, echeances } = calculerEcheancier(
-      { montant_commande: Number(montant_commande), duree: Number(duree), taux, acompte: Number(acompte || 0), depot_garantie: Number(depot_garantie || 0), remise: Number(remise || 0), date_facture },
+      { montant_commande: Number(montant_commande), duree: Number(duree), taux, acompte: Number(acompte || 0), depot_garantie: Number(depot_garantie || 0), remise: Number(remise || 0), date_facture, date_premiere_echeance: date_premiere_echeance || '' },
       paramsAvecFrais
     );
 
@@ -75,7 +75,7 @@ const create = async (req, res) => {
       montant_commande, duree, taux, marge, frais_dossier,
       frais_dossier_pct: fraisPct, acompte: acompte || 0,
       depot_garantie: depot_garantie || 0, remise: remise || 0,
-      total, echeances
+      total, date_premiere_echeance: date_premiere_echeance || '', echeances
     }).save();
 
     const client = await Client.findById(client_id);
@@ -111,14 +111,14 @@ const create = async (req, res) => {
 const update = async (req, res) => {
   try {
     const params = await Parametres.findOne();
-    const { client_id, designation, date_facture, montant_commande, duree, acompte, depot_garantie, remise, frais_dossier_pct } = req.body;
+    const { client_id, designation, date_facture, montant_commande, duree, acompte, depot_garantie, remise, frais_dossier_pct, date_premiere_echeance } = req.body;
 
     const taux = getTauxParDuree(Number(duree), params);
     const fraisPct = Number(frais_dossier_pct) || params.frais_dossier_pct || 1;
     const paramsAvecFrais = { ...params.toObject(), frais_dossier_pct: fraisPct };
 
     const { marge, frais_dossier, total, echeances: nouvellesEcheances } = calculerEcheancier(
-      { montant_commande: Number(montant_commande), duree: Number(duree), taux, acompte: Number(acompte || 0), depot_garantie: Number(depot_garantie || 0), remise: Number(remise || 0), date_facture },
+      { montant_commande: Number(montant_commande), duree: Number(duree), taux, acompte: Number(acompte || 0), depot_garantie: Number(depot_garantie || 0), remise: Number(remise || 0), date_facture, date_premiere_echeance: date_premiere_echeance || '' },
       paramsAvecFrais
     );
 
@@ -141,7 +141,8 @@ const update = async (req, res) => {
       client_id, designation, date_facture, montant_commande, duree,
       taux, marge, frais_dossier, frais_dossier_pct: fraisPct,
       acompte: acompte || 0, depot_garantie: depot_garantie || 0,
-      remise: remise || 0, total, echeances: echeancesFinales
+      remise: remise || 0, total, date_premiere_echeance: date_premiere_echeance || '',
+      echeances: echeancesFinales
     });
 
     const nbPayees = echeancesFinales.filter(e => e.statut === 'Payé' || e.statut === 'Paye').length;

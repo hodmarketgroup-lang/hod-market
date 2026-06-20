@@ -125,6 +125,7 @@ export default function Facturation() {
     client_id: '',
     designations_selectionnees: [],
     date_facture: new Date().toISOString().split('T')[0],
+    date_premiere_echeance: '',
     montant_commande: '',
     duree: '1',
     acompte: '0',
@@ -168,7 +169,8 @@ export default function Facturation() {
       acompte: '0',
       depot_garantie: '0',
       remise: '0',
-      frais_dossier_pct: ''
+      frais_dossier_pct: '',
+      date_premiere_echeance: ''
     });
     setModeEdit(false);
     setEditId(null);
@@ -202,7 +204,8 @@ export default function Facturation() {
       depot_garantie: parseSaisie(form.depot_garantie || '0'),
       remise: parseSaisie(form.remise || '0'),
       designation: getDesignationLabel(),
-      frais_dossier_pct: Number(form.frais_dossier_pct) || params.frais_dossier_pct || 1
+      frais_dossier_pct: Number(form.frais_dossier_pct) || params.frais_dossier_pct || 1,
+      date_premiere_echeance: form.date_premiere_echeance || ''
     };
     if (!window.confirm('Confirmer la creation ?\n\nClient : ' + (client ? client.nom : '') + '\nMontant : ' + formatMontant(parseSaisie(form.montant_commande)) + ' FCFA\nDuree : ' + form.duree + ' mois\nTotal : ' + formatMontant(calcul.total) + ' FCFA')) return;
     setLoading(true);
@@ -227,7 +230,8 @@ export default function Facturation() {
       depot_garantie: parseSaisie(form.depot_garantie || '0'),
       remise: parseSaisie(form.remise || '0'),
       designation: getDesignationLabel(),
-      frais_dossier_pct: Number(form.frais_dossier_pct) || params.frais_dossier_pct || 1
+      frais_dossier_pct: Number(form.frais_dossier_pct) || params.frais_dossier_pct || 1,
+      date_premiere_echeance: form.date_premiere_echeance || ''
     };
     setLoading(true);
     updateFacture(editId, dataToSend).then(() => {
@@ -248,7 +252,8 @@ export default function Facturation() {
       acompte: formatSaisie(f.acompte || '0'),
       depot_garantie: formatSaisie(f.depot_garantie || '0'),
       remise: formatSaisie(f.remise || '0'),
-      frais_dossier_pct: String(f.frais_dossier_pct || '')
+      frais_dossier_pct: String(f.frais_dossier_pct || ''),
+      date_premiere_echeance: f.date_premiere_echeance || ''
     });
     setModeEdit(true);
     setEditId(getId(f));
@@ -285,7 +290,8 @@ export default function Facturation() {
       acompte: Number(parseSaisie(form.acompte || '0')),
       depot_garantie: Number(parseSaisie(form.depot_garantie || '0')),
       remise: Number(parseSaisie(form.remise || '0')),
-      frais_dossier_pct: Number(form.frais_dossier_pct) || (params ? params.frais_dossier_pct : 1) || 1
+      frais_dossier_pct: Number(form.frais_dossier_pct) || (params ? params.frais_dossier_pct : 1) || 1,
+      date_premiere_echeance: form.date_premiere_echeance || ''
     };
     setLoading(true);
     const action = brouillonActif ? updateBrouillon(brouillonActif, data) : saveBrouillon(data);
@@ -308,7 +314,8 @@ export default function Facturation() {
       acompte: formatSaisie(b.acompte || '0'),
       depot_garantie: formatSaisie(b.depot_garantie || '0'),
       remise: formatSaisie(b.remise || '0'),
-      frais_dossier_pct: String(b.frais_dossier_pct || '')
+      frais_dossier_pct: String(b.frais_dossier_pct || ''),
+      date_premiere_echeance: b.date_premiere_echeance || ''
     });
     setBrouillonActif(b._id || b.id);
     setModeEdit(false);
@@ -471,6 +478,14 @@ export default function Facturation() {
 
             <label style={labelStyle}>Date facture</label>
             <input type="date" value={form.date_facture} onChange={e => setForm(f => ({ ...f, date_facture: e.target.value }))} style={inputStyle} />
+
+            <label style={labelStyle}>Date 1ère échéance <span style={{ color: '#555', fontWeight: 400 }}>(optionnel — sinon : +1 mois)</span></label>
+            <input type="date" value={form.date_premiere_echeance} onChange={e => setForm(f => ({ ...f, date_premiere_echeance: e.target.value }))} style={inputStyle} />
+            {form.date_premiere_echeance && (
+              <div style={{ color: '#2979ff', fontSize: 11, marginTop: 3 }}>
+                ECH1 le {form.date_premiere_echeance} · ECH2 +30j · ECH3 +60j ...
+              </div>
+            )}
 
             <label style={labelStyle}>Designations (selection multiple)</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>

@@ -4,8 +4,14 @@ function addMonths(dateStr, months) {
   return d.toISOString().split('T')[0];
 }
 
+function addDays(dateStr, days) {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+}
+
 function calculerEcheancier(data, params) {
-  const { montant_commande, duree, taux, acompte = 0, depot_garantie = 0, remise = 0, date_facture } = data;
+  const { montant_commande, duree, taux, acompte = 0, depot_garantie = 0, remise = 0, date_facture, date_premiere_echeance } = data;
 
   const frais_dossier_pct = params.frais_dossier_pct || 1;
   const marge = montant_commande * (taux / 100);
@@ -15,9 +21,12 @@ function calculerEcheancier(data, params) {
 
   const echeances = [];
   for (let i = 1; i <= duree; i++) {
+    const dateEch = date_premiere_echeance
+      ? addDays(date_premiere_echeance, (i - 1) * 30)
+      : addMonths(date_facture, i);
     echeances.push({
       numero_ech: 'ECH' + i,
-      date_echeance: addMonths(date_facture, i),
+      date_echeance: dateEch,
       montant: mensualite,
       statut: 'En attente'
     });

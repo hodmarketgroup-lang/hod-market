@@ -12,6 +12,7 @@ const brouillonSchema = new mongoose.Schema({
   depot_garantie: { type: Number, default: 0 },
   remise: { type: Number, default: 0 },
   frais_dossier_pct: { type: Number, default: 1 },
+  date_premiere_echeance: { type: String, default: '' },
   created_at: { type: Date, default: Date.now },
   updated_at: { type: Date, default: Date.now }
 });
