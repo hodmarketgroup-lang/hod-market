@@ -70,4 +70,26 @@ const deleteOperation = async (req, res) => {
   }
 };
 
-module.exports = { getAll, addOperation, deleteOperation, getSoldeActuel, recalculerSoldes };
+const reparerSoldes = async (req, res) => {
+  try {
+    const params = await Parametres.findOne();
+    const journal = await Caisse.find().sort({ _id: 1 });
+    let solde = params ? params.solde_initial : 0;
+    let corriges = 0;
+
+    for (const j of journal) {
+      solde = solde + (j.entree || 0) - (j.sortie || 0);
+      if (j.solde !== solde) {
+        await Caisse.findByIdAndUpdate(j._id, { solde });
+        corriges++;
+      }
+    }
+
+    res.json({ success: true, message: `${corriges} operations corrigees sur ${journal.length}`, soldeFinal: solde });
+  } catch (err) {
+    console.error('Erreur reparerSoldes:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+module.exports = { getAll, addOperation, deleteOperation, getSoldeActuel, recalculerSoldes, reparerSoldes };
