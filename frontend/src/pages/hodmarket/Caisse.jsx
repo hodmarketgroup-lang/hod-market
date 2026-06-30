@@ -1,12 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { getCaisse, addOperation } from '../../services/api';
+import { getCaisse, addOperation, deleteOperation } from '../../services/api';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import StatCard from '../../components/StatCard';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-import axios from 'axios';
-
-const API = axios.create({ baseURL: 'http://localhost:5000/api' });
 
 function fmt(m) { return Math.round(m || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
 
@@ -24,8 +21,11 @@ export default function Caisse() {
   };
 
   const handleAnnuler = (id) => {
+    if (!id) return alert('Erreur : identifiant manquant');
     if (!window.confirm('Annuler cette operation manuelle ?')) return;
-    API.delete('/caisse/' + id).then(() => load()).catch(err => alert('Erreur : ' + err.message));
+    deleteOperation(id)
+      .then(() => load())
+      .catch(err => alert('Erreur : ' + (err.response?.data?.error || err.message)));
   };
 
   const exportExcel = () => {
@@ -105,7 +105,7 @@ export default function Caisse() {
           </thead>
           <tbody>
             {[...data.journal].reverse().map((j, i) => (
-              <tr key={i}>
+              <tr key={j._id || i}>
                 <td style={td}>{j.date}</td>
                 <td style={td}><span style={{ color: j.type === 'Entree' ? '#00e676' : '#ff5252', fontWeight: 600 }}>{j.type}</span></td>
                 <td style={td}>{j.libelle}</td>
@@ -114,7 +114,7 @@ export default function Caisse() {
                 <td style={{ ...td, fontWeight: 600 }}>{fmt(j.solde)} FCFA</td>
                 <td style={td}>
                   {!j.facture_id && !j.echeance_id ? (
-                    <button onClick={() => handleAnnuler(j.id)} style={btn('#c62828', true)}>Annuler</button>
+                    <button onClick={() => handleAnnuler(j._id)} style={btn('#c62828', true)}>Annuler</button>
                   ) : (
                     <span style={{ color: '#8ba3c1', fontSize: 11 }}>Auto</span>
                   )}

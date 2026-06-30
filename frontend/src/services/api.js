@@ -46,6 +46,7 @@ export const deleteBrouillon = (id) => API.delete(`/brouillons/${id}`);
 
 export const getCaisse = () => API.get('/caisse');
 export const addOperation = (d) => API.post('/caisse', d);
+export const deleteOperation = (id) => API.delete(`/caisse/${id}`);
 
 export const getParams = () => API.get('/parametres');
 export const saveParams = (d) => API.put('/parametres', d);
