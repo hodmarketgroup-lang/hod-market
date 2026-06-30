@@ -27,6 +27,7 @@ const factureSchema = new mongoose.Schema({
   depot_garantie: { type: Number, default: 0 },
   remise: { type: Number, default: 0 },
   total: { type: Number, default: 0 },
+  penalite_montant: { type: Number, default: 0 },
   date_premiere_echeance: { type: String, default: '' },
   statut: { type: String, default: 'En attente' },
   echeances: [echeanceSchema],

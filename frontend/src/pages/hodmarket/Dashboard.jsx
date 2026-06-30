@@ -97,7 +97,7 @@ export default function Dashboard() {
       return true;
     };
     const facFiltrees = allFactures.filter(f => filtrerDate(f.date_facture));
-    const margeCommerciale = facFiltrees.reduce((s, f) => s + (f.marge || 0) + (f.frais_dossier || 0) - (f.remise || 0), 0);
+    const margeCommerciale = facFiltrees.reduce((s, f) => s + (f.marge || 0) + (f.frais_dossier || 0) - (f.remise || 0) + (f.penalite_montant || 0), 0);
     const caisseFiltree = allCaisse.filter(j => j.type === 'Sortie' && !j.facture_id && filtrerDate(j.date));
     const depensesDirectes = caisseFiltree.reduce((s, j) => s + (j.sortie || 0), 0);
     setSynthese({ margeCommerciale, depensesDirectes, margeNette: margeCommerciale - depensesDirectes });
@@ -113,7 +113,7 @@ export default function Dashboard() {
     allFactures.forEach(f => {
       const m = f.date_facture ? f.date_facture.substring(0, 7) : '';
       if (!data[m]) data[m] = { mois: m, marge: 0, depenses: 0 };
-      data[m].marge += (f.marge || 0) + (f.frais_dossier || 0) - (f.remise || 0);
+      data[m].marge += (f.marge || 0) + (f.frais_dossier || 0) - (f.remise || 0) + (f.penalite_montant || 0);
     });
     allCaisse.filter(j => j.type === 'Sortie' && !j.facture_id).forEach(j => {
       const m = j.date ? j.date.substring(0, 7) : '';
@@ -266,7 +266,7 @@ export default function Dashboard() {
             <div style={{ color: '#8ba3c1', fontSize: 12, marginBottom: 6 }}>Marge commerciale</div>
             <div style={{ color: '#2979ff', fontWeight: 700, fontSize: 22 }}>{fmt(synthese.margeCommerciale)}</div>
             <div style={{ color: '#8ba3c1', fontSize: 11 }}>FCFA</div>
-            <div style={{ color: '#8ba3c1', fontSize: 10, marginTop: 4 }}>Marge + Frais - Remise</div>
+            <div style={{ color: '#8ba3c1', fontSize: 10, marginTop: 4 }}>Marge + Frais - Remise + Penalites</div>
           </div>
           <div style={{ flex: 1, minWidth: 160, background: '#0d1b2a', borderRadius: 12, padding: '1rem 1.5rem', border: '1px solid rgba(255,82,82,0.3)' }}>
             <div style={{ color: '#8ba3c1', fontSize: 12, marginBottom: 6 }}>Depenses directes</div>

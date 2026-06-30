@@ -17,6 +17,7 @@ async function appliquerPenalite(factureId) {
 
   const restantDu = echeances.reduce((s, e) => s + e.montant, 0);
   const nouveauTotal = restantDu * (1 + params.penalite_pct / 100);
+  const montantPenalite = nouveauTotal - restantDu;
   const nouvelleMensualite = Math.round(nouveauTotal / echeances.length);
   const today = new Date().toISOString().split('T')[0];
 
@@ -25,8 +26,11 @@ async function appliquerPenalite(factureId) {
     e.date_echeance = addMonths(today, i + params.decalage_mois);
   });
 
+  facture.penalite_montant = (facture.penalite_montant || 0) + montantPenalite;
+  facture.total = (facture.total || 0) + montantPenalite;
+
   await facture.save();
-  return { restantDu, nouveauTotal, nouvelleMensualite, penalitePct: params.penalite_pct, nbEcheances: echeances.length };
+  return { restantDu, nouveauTotal, nouvelleMensualite, montantPenalite, penalitePct: params.penalite_pct, nbEcheances: echeances.length };
 }
 
 module.exports = { appliquerPenalite };
