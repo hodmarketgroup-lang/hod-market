@@ -73,7 +73,7 @@ const deleteOperation = async (req, res) => {
 const reparerSoldes = async (req, res) => {
   try {
     const params = await Parametres.findOne();
-    const journal = await Caisse.find().sort({ _id: 1 });
+    const journal = await Caisse.find().sort({ createdAt: 1, _id: 1 });
     let solde = params ? params.solde_initial : 0;
     let corriges = 0;
 
@@ -92,4 +92,31 @@ const reparerSoldes = async (req, res) => {
   }
 };
 
-module.exports = { getAll, addOperation, deleteOperation, getSoldeActuel, recalculerSoldes, reparerSoldes };
+const corrigerMontant = async (req, res) => {
+  try {
+    const { libelle_contient, nouveau_montant } = req.body;
+    if (!libelle_contient || nouveau_montant === undefined) {
+      return res.status(400).json({ error: 'libelle_contient et nouveau_montant requis' });
+    }
+
+    const op = await Caisse.findOne({ libelle: { $regex: libelle_contient, $options: 'i' } });
+    if (!op) return res.status(404).json({ error: 'Operation introuvable avec ce libelle' });
+
+    if (op.sortie > 0) {
+      op.sortie = Number(nouveau_montant);
+    } else if (op.entree > 0) {
+      op.entree = Number(nouveau_montant);
+    }
+    await op.save();
+
+    await recalculerSoldes();
+
+    const nouveauSolde = await getSoldeActuel();
+    res.json({ success: true, message: 'Operation corrigee', libelle: op.libelle, nouveauMontant: nouveau_montant, soldeFinal: nouveauSolde });
+  } catch (err) {
+    console.error('Erreur corrigerMontant:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+module.exports = { getAll, addOperation, deleteOperation, getSoldeActuel, recalculerSoldes, reparerSoldes, corrigerMontant };
