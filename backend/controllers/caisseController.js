@@ -2,7 +2,7 @@ const Caisse = require('../models/Caisse');
 const Parametres = require('../models/Parametres');
 
 async function getSoldeActuel() {
-  const last = await Caisse.findOne().sort({ _id: -1 });
+  const last = await Caisse.findOne().sort({ createdAt: -1, _id: -1 });
   if (last) return last.solde;
   const params = await Parametres.findOne();
   return params ? params.solde_initial : 0;
@@ -10,7 +10,7 @@ async function getSoldeActuel() {
 
 async function recalculerSoldes() {
   const params = await Parametres.findOne();
-  const journal = await Caisse.find().sort({ date: 1, _id: 1 });
+  const journal = await Caisse.find().sort({ createdAt: 1, _id: 1 });
   let solde = params ? params.solde_initial : 0;
   for (const j of journal) {
     solde = solde + (j.entree || 0) - (j.sortie || 0);
@@ -23,7 +23,7 @@ async function recalculerSoldes() {
 const getAll = async (req, res) => {
   try {
     const params = await Parametres.findOne();
-    const journal = await Caisse.find().sort({ date: 1, _id: 1 });
+    const journal = await Caisse.find().sort({ createdAt: 1, _id: 1 });
     const solde = await getSoldeActuel();
     res.json({ journal, solde, solde_initial: params ? params.solde_initial : 0 });
   } catch (err) {

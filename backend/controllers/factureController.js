@@ -163,7 +163,7 @@ const update = async (req, res) => {
     if (params.deduire_commande && (montantCommandeChange || acompteChange)) {
       const operationsAuto = await Caisse.find({
         facture_id: facture._id,
-        echeance_id: { $exists: false }
+        $or: [{ echeance_id: null }, { echeance_id: { $exists: false } }]
       });
 
       for (const op of operationsAuto) {

@@ -9,6 +9,6 @@ const caisseSchema = new mongoose.Schema({
   solde: { type: Number, default: 0 },
   facture_id: { type: mongoose.Schema.Types.ObjectId, default: null },
   echeance_id: { type: mongoose.Schema.Types.ObjectId, default: null }
-});
+}, { timestamps: true });
 
 module.exports = mongoose.model('Caisse', caisseSchema);
