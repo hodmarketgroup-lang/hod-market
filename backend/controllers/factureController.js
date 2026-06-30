@@ -5,6 +5,7 @@ const Parametres = require('../models/Parametres');
 const { calculerEcheancier } = require('../services/calcEcheancier');
 const { getTauxParDuree } = require('../services/calcTaux');
 const { notifFactureCreee, notifPaiementRecu, rappelRetard } = require('../services/twilioService');
+const { recalculerSoldes, getSoldeActuel } = require('./caisseController');
 
 function genNumero(count) {
   const now = new Date();
@@ -15,13 +16,6 @@ function genNumero(count) {
 
 function formatMontant(montant) {
   return Math.round(montant || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-}
-
-async function getSoldeActuel() {
-  const last = await Caisse.findOne().sort({ _id: -1 });
-  if (last) return last.solde;
-  const params = await Parametres.findOne();
-  return params ? params.solde_initial : 0;
 }
 
 const getAll = async (req, res) => {
@@ -122,8 +116,12 @@ const update = async (req, res) => {
       paramsAvecFrais
     );
 
-    const facture = await Facture.findById(req.params.id);
+    const facture = await Facture.findById(req.params.id).populate('client_id', 'nom');
     if (!facture) return res.status(404).json({ error: 'Facture introuvable' });
+
+    const ancienMontantCommande = facture.montant_commande;
+    const ancienAcompte = facture.acompte;
+    const nomClient = facture.client_id?.nom || '';
 
     const echeancesPayees = facture.echeances.filter(e =>
       e.statut === 'Payé' || e.statut === 'Paye' || e.statut === 'Reste a regler'
@@ -158,8 +156,43 @@ const update = async (req, res) => {
     }
 
     await facture.save();
+
+    const montantCommandeChange = Number(ancienMontantCommande) !== Number(montant_commande);
+    const acompteChange = Number(ancienAcompte) !== Number(acompte || 0);
+
+    if (params.deduire_commande && (montantCommandeChange || acompteChange)) {
+      const operationsAuto = await Caisse.find({
+        facture_id: facture._id,
+        echeance_id: { $exists: false }
+      });
+
+      for (const op of operationsAuto) {
+        await Caisse.findByIdAndDelete(op._id);
+      }
+
+      const soldeApresSuppression = await getSoldeActuel();
+      const newSolde = soldeApresSuppression - Number(montant_commande);
+
+      await new Caisse({
+        date: date_facture, type: 'Sortie',
+        libelle: `Commande (modifiee) - ${nomClient} (${facture.numero})`,
+        sortie: montant_commande, solde: newSolde, facture_id: facture._id
+      }).save();
+
+      if (Number(acompte) > 0) {
+        await new Caisse({
+          date: date_facture, type: 'Entree',
+          libelle: `Acompte (modifie) - ${nomClient} (${facture.numero})`,
+          entree: acompte, solde: newSolde + Number(acompte), facture_id: facture._id
+        }).save();
+      }
+
+      await recalculerSoldes();
+    }
+
     res.json({ success: true, total, marge, taux, echeances: echeancesFinales });
   } catch (err) {
+    console.error('Erreur update facture:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -264,6 +297,8 @@ const annulerPaiement = async (req, res) => {
     await facture.save();
 
     await Caisse.deleteMany({ echeance_id: ech._id });
+    await recalculerSoldes();
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
