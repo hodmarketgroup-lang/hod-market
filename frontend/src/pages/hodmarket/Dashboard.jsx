@@ -65,9 +65,11 @@ export default function Dashboard() {
           numero: d.numero
         })));
 
+        const enAttenteOuPartiel = (e) => e.statut === 'En attente' || e.statut === 'Reste a regler';
+
         setAlertes({
-          retard: echeances.filter(e => e.statut === 'En attente' && e.date_echeance < today),
-          bientot: echeances.filter(e => e.statut === 'En attente' && e.date_echeance >= today && e.date_echeance <= j5str)
+          retard: echeances.filter(e => enAttenteOuPartiel(e) && e.date_echeance < today),
+          bientot: echeances.filter(e => enAttenteOuPartiel(e) && e.date_echeance >= today && e.date_echeance <= j5str)
         });
 
         // --- PREVISIONS : tous les mois où il existe un solde en attente,
