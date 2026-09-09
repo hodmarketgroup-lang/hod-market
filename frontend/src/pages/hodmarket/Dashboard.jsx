@@ -70,19 +70,37 @@ export default function Dashboard() {
           bientot: echeances.filter(e => e.statut === 'En attente' && e.date_echeance >= today && e.date_echeance <= j5str)
         });
 
-        const anneeEnCours = new Date().getFullYear();
-        const moisEnCours = new Date().getMonth();
-        const previsionsData = [];
-        for (let m = moisEnCours; m < 12; m++) {
-          const moisStr = String(anneeEnCours) + '-' + String(m + 1).padStart(2, '0');
-          const echeancesMois = echeances.filter(e => {
-            if (!e.date_echeance) return false;
-            const moisEch = e.date_echeance.substring(0, 7);
-            return moisEch === moisStr && (e.statut === 'En attente' || e.statut === 'Reste a regler');
+        // --- PREVISIONS : tous les mois où il existe un solde en attente,
+        // sans limite d'année ni exclusion des mois déjà passés ---
+        const echeancesEnAttente = echeances.filter(e =>
+          e.date_echeance && (e.statut === 'En attente' || e.statut === 'Reste a regler')
+        );
+
+        const groupes = {};
+        echeancesEnAttente.forEach(e => {
+          const moisAnnee = e.date_echeance.substring(0, 7); // "YYYY-MM"
+          if (!groupes[moisAnnee]) groupes[moisAnnee] = [];
+          groupes[moisAnnee].push(e);
+        });
+
+        const previsionsData = Object.keys(groupes)
+          .sort() // tri chronologique "YYYY-MM"
+          .map(moisAnnee => {
+            const [a, m] = moisAnnee.split('-');
+            const idxMois = Number(m) - 1;
+            const echeancesMois = groupes[moisAnnee];
+            const montantPrev = echeancesMois.reduce((s, e) => s + (e.montant || 0), 0);
+            return {
+              moisAnnee,
+              mois: MOIS_COURTS[idxMois],
+              annee: a,
+              label: `${MOIS_COURTS[idxMois]} ${a}`,
+              montant: montantPrev,
+              nb: echeancesMois.length,
+              echeances: echeancesMois
+            };
           });
-          const montantPrev = echeancesMois.reduce((s, e) => s + (e.montant || 0), 0);
-          previsionsData.push({ mois: MOIS_COURTS[m], moisNum: m + 1, montant: montantPrev, nb: echeancesMois.length, echeances: echeancesMois });
-        }
+
         setPrevisions(previsionsData);
       });
     });
@@ -125,10 +143,10 @@ export default function Dashboard() {
 
   const CustomTooltipPrev = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
-      const data = previsions.find(p => p.mois === label);
+      const data = previsions.find(p => p.label === label);
       return (
         <div style={{ background: '#0d1b2a', border: '1px solid rgba(46,204,113,0.3)', borderRadius: 8, padding: '10px 14px' }}>
-          <div style={{ color: '#2ecc71', fontWeight: 700, marginBottom: 6 }}>{label} {new Date().getFullYear()}</div>
+          <div style={{ color: '#2ecc71', fontWeight: 700, marginBottom: 6 }}>{label}</div>
           <div style={{ color: '#e8f0fe', fontSize: 13 }}>{fmt(payload[0]?.value)} FCFA</div>
           <div style={{ color: '#8ba3c1', fontSize: 11 }}>{data?.nb || 0} échéance(s)</div>
         </div>
@@ -152,30 +170,30 @@ export default function Dashboard() {
       <div style={{ background: '#162436', borderRadius: 14, padding: '1.5rem', border: '1px solid rgba(46,204,113,0.2)', marginBottom: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: '1.5rem' }}>
           <div>
-            <h3 style={{ margin: 0, color: '#2ecc71', fontSize: 16 }}>💰 Prévisions d'encaissement {new Date().getFullYear()}</h3>
-            <div style={{ color: '#8ba3c1', fontSize: 12, marginTop: 4 }}>Échéances en attente mois par mois jusqu'en décembre</div>
+            <h3 style={{ margin: 0, color: '#2ecc71', fontSize: 16 }}>💰 Prévisions d'encaissement</h3>
+            <div style={{ color: '#8ba3c1', fontSize: 12, marginTop: 4 }}>Toutes les échéances en attente, mois par mois (passées et futures)</div>
           </div>
           <div style={{ background: '#0d1b2a', borderRadius: 10, padding: '10px 20px', border: '1px solid rgba(46,204,113,0.3)' }}>
             <div style={{ color: '#8ba3c1', fontSize: 11 }}>Total à encaisser</div>
             <div style={{ color: '#2ecc71', fontWeight: 700, fontSize: 20 }}>{fmt(totalPrevisions)} FCFA</div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: '1.5rem', overflowX: 'auto' }}>
           {previsions.map(p => {
-            const estSelectionne = moisSelectionne?.mois === p.mois;
+            const estSelectionne = moisSelectionne?.moisAnnee === p.moisAnnee;
             return (
               <div
-                key={p.mois}
+                key={p.moisAnnee}
                 onClick={() => p.montant > 0 && setMoisSelectionne(estSelectionne ? null : p)}
                 style={{
-                  flex: '1 1 80px', minWidth: 80, borderRadius: 10, padding: '10px 12px', textAlign: 'center',
+                  flex: '1 1 90px', minWidth: 90, borderRadius: 10, padding: '10px 12px', textAlign: 'center',
                   background: estSelectionne ? '#0d2a1a' : p.montant > 0 ? '#0d1b2a' : '#0a1525',
                   border: estSelectionne ? '2px solid #2ecc71' : p.montant > 0 ? '1px solid rgba(46,204,113,0.3)' : '1px solid rgba(255,255,255,0.05)',
                   cursor: p.montant > 0 ? 'pointer' : 'default',
                   transition: 'border 0.15s, background 0.15s'
                 }}
               >
-                <div style={{ color: estSelectionne ? '#2ecc71' : '#8ba3c1', fontSize: 11, marginBottom: 4 }}>{p.mois}</div>
+                <div style={{ color: estSelectionne ? '#2ecc71' : '#8ba3c1', fontSize: 11, marginBottom: 4 }}>{p.label}</div>
                 <div style={{ color: p.montant > 0 ? '#2ecc71' : '#8ba3c1', fontWeight: 700, fontSize: 14 }}>{p.montant > 0 ? fmt(p.montant) : '—'}</div>
                 {p.montant > 0 && <div style={{ color: '#8ba3c1', fontSize: 10, marginTop: 2 }}>{p.nb} éch.</div>}
               </div>
@@ -184,11 +202,11 @@ export default function Dashboard() {
         </div>
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={previsions} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-            <XAxis dataKey="mois" tick={{ fill: '#8ba3c1', fontSize: 11 }} />
+            <XAxis dataKey="label" tick={{ fill: '#8ba3c1', fontSize: 11 }} />
             <YAxis tick={{ fill: '#8ba3c1', fontSize: 10 }} tickFormatter={v => fmt(v)} />
             <Tooltip content={<CustomTooltipPrev />} />
             <Bar dataKey="montant" fill="#2ecc71" radius={[6,6,0,0]} name="Prévision"
-              onClick={(data) => data.montant > 0 && setMoisSelectionne(moisSelectionne?.mois === data.mois ? null : data)}
+              onClick={(data) => data.montant > 0 && setMoisSelectionne(moisSelectionne?.moisAnnee === data.moisAnnee ? null : data)}
               cursor="pointer"
             />
           </BarChart>
@@ -200,7 +218,7 @@ export default function Dashboard() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: 10 }}>
               <div>
                 <span style={{ color: '#2ecc71', fontWeight: 700, fontSize: 15 }}>
-                  Détail — {moisSelectionne.mois} {new Date().getFullYear()}
+                  Détail — {moisSelectionne.label}
                 </span>
                 <span style={{ color: '#8ba3c1', fontSize: 12, marginLeft: 12 }}>
                   {moisSelectionne.nb} échéance(s) · Total : {fmt(moisSelectionne.montant)} FCFA
